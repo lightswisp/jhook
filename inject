@@ -1,0 +1,68 @@
+#!/bin/ruby 
+require 'pathname'
+
+SELF              = Process.pid
+UID               = Process.uid
+
+# The MODE argument to `dlopen' contains one of the following: # 
+RTLD_LAZY         = 0x00001        # Lazy function call binding.
+RTLD_NOW          = 0x00002        # Immediate function call binding.
+RTLD_BINDING_MASK = 0x00003        # Mask of binding time value.
+RTLD_NOLOAD       = 0x00004        # Do not load the object.
+RTLD_DEEPBIND     = 0x00008        # Use deep binding.
+
+def get_pid(proc_name)
+  pid = `pidof #{proc_name}`
+  if $? != 0
+    raise "can't find pid of #{proc_name}"
+  end
+  pids = pid.split(" ").select{|p| p.to_i != SELF}
+  if pids.empty?
+    raise "can't find pid of #{proc_name}"
+  end
+  return pids.first.to_i
+end
+
+def inject(pid, lib_name, should_detach)
+  #cmd = sprintf('gdb -n -q -batch-silent -p %d -ex "call (void*)dlopen(\"%s\", %d)"', pid, lib_name, RTLD_LAZY)
+  cmd = sprintf('gf2 gdb -p %d -ex "call (void*)dlopen(\"%s\", %d)"', pid, lib_name, RTLD_LAZY)
+  if should_detach
+    cmd += " -ex \"set logging off\""
+    cmd += " -ex \"detach\""
+    cmd += " -ex \"quit\""
+  end
+  ret = system(cmd) 
+  unless ret 
+    raise "failed to uninject!"
+  end
+  return ret
+end
+
+# main code
+proc_name     = ARGV[0] || "java"
+lib_name      = ARGV[1] || "lib2inject.so"
+should_detach = false
+pid           = nil
+
+unless UID.zero? 
+  raise "run as root please!"
+end
+
+unless proc_name
+  raise "please provide process name!"
+end
+
+unless lib_name
+  raise "please provide lib name!"
+end
+
+
+unless File.exist?(lib_name)
+  raise "library file not found!"
+end
+
+lib_name = Pathname.new(lib_name).realpath
+pid = get_pid(proc_name)
+if(inject(pid, lib_name, should_detach))
+  puts "injected!"
+end
