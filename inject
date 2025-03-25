@@ -33,7 +33,7 @@ def inject(pid, lib_name, should_detach)
   end
   ret = system(cmd) 
   unless ret 
-    raise "failed to uninject!"
+    raise "failed to inject!"
   end
   return ret
 end
