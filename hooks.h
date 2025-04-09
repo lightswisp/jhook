@@ -71,7 +71,7 @@ extern void             method_set_native(__Method method, unsigned char *entry)
       :: [hook_method] "m" (g_hook_method_##x)    \
   );                                              \
   POP("rbp");                                     \
-  /* jumping to the original */                   \
+  /* jumping to the native interpreter */         \
   __asm__ volatile(                               \
     "jmpq *%[addr]"                               \
     :: [addr] "m" (g_hook_interpreter_##x)        \
