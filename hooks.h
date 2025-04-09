@@ -65,7 +65,7 @@ extern void             method_set_native(__Method method, unsigned char *entry)
 
 #define HOOK_ENTRY(x) \
   __attribute__((noreturn)) void hook_entry_##x(){\
-  /* passing arguments */                         \
+  /* switching method */                          \
   __asm__ volatile(                               \
       "mov %[hook_method], %%rbx"                 \
       :: [hook_method] "m" (g_hook_method_##x)    \
