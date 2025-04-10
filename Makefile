@@ -1,18 +1,19 @@
 CC=gcc
-INCLUDES=-I/usr/lib/jvm/java-23-openjdk/include/linux -I/usr/lib/jvm/java-23-openjdk/include
+INCLUDES=-I/usr/lib/jvm/default-runtime/include/linux -I/usr/lib/jvm/default-runtime/include
 LIBS=-lpthread -ldl 
 CFLAGS=-Wall -shared -ggdb -O0
-SOURCES=main.c
+SOURCES=main.c hooks.c dump.c helpers.c logger.c
 OUT=lib2inject.so
-OBJS=lib2inject.o
+OBJS=$(SOURCES:.c=.o)
 EXEC=@bash -c
 
 all: $(OUT)
 
 $(OUT): $(OBJS)
 	$(CC) -o $@ $(INCLUDES) $(CFLAGS) $^ 
+	rm *.o
 
-$(OBJS): $(SOURCES)
+%.o: %.c 
 	$(CC) -fPIC -ggdb $(INCLUDES) -c $< -o $@
 
 inject:	all 
