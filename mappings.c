@@ -149,12 +149,3 @@ void mappings_print(mapping_parsed_t *parsed){
   }
 }
 
-int main(){
-  FILE *mappings = mappings_open();  
-  mapping_parsed_t parsed = mappings_parse(mappings);
-  mappings_print(&parsed);
-
-  mappings_free(&parsed);
-  fclose(mappings);
-  return 0;
-}
