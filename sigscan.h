@@ -1,6 +1,8 @@
 #pragma once 
+#define _GNU_SOURCE
+#include <link.h>
 #include <stdint.h>
 #include <sys/types.h>
 
-typedef int64_t loc_t;
-extern loc_t sigscan(char *memory, ssize_t memory_size, char* signature, ssize_t signature_size, char *mask, ssize_t mask_size);
+typedef char* loc_t;
+loc_t sigscan(char *start, char *end, char *signature, size_t signature_size, char *mask, size_t mask_size);

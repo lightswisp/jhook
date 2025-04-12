@@ -1,26 +1,26 @@
+#define _GNU_SOURCE
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 
 #include "sigscan.h"
 
-loc_t sigscan(char *memory, ssize_t memory_size, char* signature, ssize_t signature_size, char *mask, ssize_t mask_size){
-  loc_t l = -1;
-
+loc_t sigscan(char *start, char *end, char *signature, size_t signature_size, char *mask, size_t mask_size){
   if(mask_size != signature_size)
-    return l;
+    return NULL;
 
-  ssize_t sig_i = 0;
-  for(ssize_t i = 0; i < memory_size; i++){
-    if(memory[i] == signature[sig_i] || mask[sig_i] == '?'){
+  size_t sig_i = 0;
+
+  while(start <= end){
+    if(*start == signature[sig_i] || mask[sig_i] == '?'){
       sig_i++; 
-      if(sig_i == (signature_size - 1)){
-        l = (i - signature_size + 2); 
-        break;
-      }
+      if(sig_i == (signature_size - 1))
+        return (start - signature_size + 2); 
     }
     else 
       sig_i = 0;
+
+    start++;
   } 
-  return l;
+
+  return NULL;
 }
