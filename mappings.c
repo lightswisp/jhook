@@ -23,10 +23,12 @@ mapping_text_t mappings_read(FILE *mappings){
   size_t read_bytes = 0;
 
   buf = malloc(MAX_READ_SIZE);
+  assert(buf != NULL && "malloc failed");
   while((read_bytes = fread(temp_buf, sizeof(char), MAX_READ_SIZE, mappings)) > 0){
     buf_size += read_bytes; 
     strncat(buf, temp_buf,  read_bytes);
     buf = realloc(buf, buf_size);
+    assert(buf != NULL && "realloc failed");
   }
   text.size = buf_size - MAX_READ_SIZE;
   text.buffer = buf;
@@ -81,6 +83,7 @@ mapping_entry_t *mappings_parse_entry(char *text, size_t text_size){
    *   p = private (copy on write)
    */
   mapping_entry_t *entry = (mapping_entry_t*)malloc(sizeof(mapping_entry_t));
+  assert(entry != NULL && "malloc failed");
 
   char *pch  = NULL;
   char *pch2 = NULL;
