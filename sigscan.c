@@ -1,26 +1,20 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "sigscan.h"
 
-loc_t sigscan(char *start, char *end, char *signature, size_t signature_size, char *mask, size_t mask_size){
-  if(mask_size != signature_size)
-    return NULL;
+static bool valid(uint8_t *mem, uint8_t* signature, uint8_t *mask, size_t size){
+  while(size --> 0)
+    if(mem[size] != signature[size] && mask[size] == 'x') return false;
+  return true;
+}
 
-  size_t sig_i = 0;
-
+loc_t sigscan(uint8_t *start, uint8_t *end, uint8_t *signature, size_t signature_size, uint8_t *mask, size_t mask_size){
+  if(mask_size != signature_size) return NULL;
   while(start <= end){
-    if(*start == signature[sig_i] || mask[sig_i] == '?'){
-      sig_i++; 
-      if(sig_i == (signature_size - 1))
-        return (start - signature_size + 2); 
-    }
-    else 
-      sig_i = 0;
-
+    if(valid(start, signature, mask, signature_size)) return start;
     start++;
   } 
-
   return NULL;
 }

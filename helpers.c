@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <dlfcn.h>
 #include <jni.h>
 #include <jvmti.h>
 

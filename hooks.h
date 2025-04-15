@@ -8,7 +8,7 @@
 
 extern void             set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2i, uint64_t **orig_fi);
 extern void             remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi);
-extern bool             init_hooks(void);
+extern bool             init_libjvm(void);
 extern __Method         method_create(__Method original_method, const char *method_name, const char *method_sig);
 extern __GrowableArray  array_create(int cap);
 extern void             array_push(__GrowableArray array, __Method *method);
@@ -18,12 +18,13 @@ extern unsigned char*   method_interpreter_get(__Method method);
 extern void             method_set_native(__Method method, unsigned char *entry);
 
 #define HOOK_INIT(x) \
-  static jclass         g_clazz_##x;            \
-  static jmethodID      g_target_mid_##x;       \
-  static uint64_t      *g_orig_i2i_entry_##x;   \
-  static uint64_t      *g_orig_fi_entry_##x;    \
-  static uint64_t      *g_hook_method_##x;      \
-  static unsigned char *g_hook_interpreter_##x; \
+  static bool           g_initialized_##x      = false; \
+  static jclass         g_clazz_##x            = NULL;  \
+  static jmethodID      g_target_mid_##x       = NULL;  \
+  static uint64_t      *g_orig_i2i_entry_##x   = NULL;  \
+  static uint64_t      *g_orig_fi_entry_##x    = NULL;  \
+  static uint64_t      *g_hook_method_##x      = NULL;  \
+  static unsigned char *g_hook_interpreter_##x = NULL;  \
 
 #define PUSH(reg) __asm__ volatile("push %"reg)
 #define POP(reg) __asm__ volatile("pop %"reg)
@@ -79,8 +80,9 @@ extern void             method_set_native(__Method method, unsigned char *entry)
   while(1);                                       \
 }
 
-#define REMOVE_HOOK(x) do{                                                  \
-  remove_hook(g_target_mid_##x, g_orig_i2i_entry_##x, g_orig_fi_entry_##x); \
+#define REMOVE_HOOK(x) do{                                                    \
+  if(g_initialized_##x)                                                       \
+    remove_hook(g_target_mid_##x, g_orig_i2i_entry_##x, g_orig_fi_entry_##x); \
 } while(0)
 
 #define _SET_HOOK(x) do{ \
@@ -88,6 +90,7 @@ extern void             method_set_native(__Method method, unsigned char *entry)
 } while(0)
 
 #define SET_HOOK(x, method, interpreter) do{ \
+  g_initialized_##x = true;                  \
   g_hook_method_##x = method;                \
   g_hook_interpreter_##x = interpreter;      \
   _SET_HOOK(x);                              \

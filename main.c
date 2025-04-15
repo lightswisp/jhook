@@ -1,11 +1,11 @@
 #include <stdlib.h>
+#include <dlfcn.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <pthread.h>
 #include <string.h>
-#include <assert.h>
 #include <stdbool.h>
 #include <jni.h>
 #include <jvmti.h>
@@ -21,14 +21,14 @@
 static JavaVM   *g_jvm;
 static JNIEnv   *g_env;
 
-void *__main_thread(void *a);
+void      *__main_thread(void *a);
+pthread_t g_thread;
 
 /* run this function on library load */
 __attribute__((constructor)) void __library_startup(){
   logger_log(__func__, "injected !");
   logger_log(__func__, "now trying to create new thread");
   pthread_attr_t attr;
-  pthread_t main_thread;
 
   /* start thread detached */
   if (-1 == pthread_attr_init(&attr)) 
@@ -38,7 +38,7 @@ __attribute__((constructor)) void __library_startup(){
     return;
 
   /* spawn a thread to do the real work */
-  pthread_create(&main_thread, NULL, __main_thread, NULL);
+  pthread_create(&g_thread, NULL, __main_thread, NULL);
 }
 
 HOOK_INIT(str_test);
@@ -77,6 +77,10 @@ JNIEXPORT jstring JNICALL readLine_hk (JNIEnv* env, jobject thisObject) {
 /* our main loop */
 void* __main_thread(void *a)
 {
+  // TODO 
+  // replace asserts with custom made assert that will uninject 
+  // the library on failure. It is really crutial to keep the java process alive 
+  // instead of just exiting it.
 
   /* this is where we specify the function to hook */
   #define CLASS_NAME        "java/io/BufferedReader"
@@ -85,7 +89,7 @@ void* __main_thread(void *a)
   #define METHOD_SIG        "()Ljava/lang/String;"
   #define METHOD_IS_STATIC  false
 
-  if(!init_hooks())
+  if(!init_libjvm())
     return NULL;
 
   if(get_java_vms(&g_jvm) != JNI_OK)             
@@ -110,9 +114,14 @@ void* __main_thread(void *a)
   {METHOD_NAME_HK, METHOD_SIG, (void*) &readLine_hk },
   }; 
 
+  /* this one shouldn't fail */
   __Method orig = resolve_jmethod_id(GET_HOOK_NAME_BY_IDX(readLine));
   __Method m = method_create(orig, METHOD_NAME_HK, METHOD_SIG);
+  if(m == NULL) return NULL;
+
   __GrowableArray array = array_create(1);
+  if(array == NULL) return NULL;
+
   array_push(array, &m);
   method_merge(array, klass_get(orig)); 
 
@@ -123,13 +132,11 @@ void* __main_thread(void *a)
   }
 
   SET_HOOK(readLine, m, method_interpreter_get(m));
-
   return NULL;
 }
 
 __attribute__((destructor)) void __library_shutdown(){
-  pthread_attr_t attr;
   logger_log(__func__, "unloading");
-  REMOVE_HOOK(readLine);
-  (*g_jvm)->DetachCurrentThread(g_jvm);
+  //REMOVE_HOOK(readLine);
+  //if(g_jvm != NULL) (*g_jvm)->DetachCurrentThread(g_jvm);
 }

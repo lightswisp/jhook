@@ -3,51 +3,54 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <assert.h>
 #include <linux/limits.h>
 
 #include "mappings.h"
+#include "logger.h"
+#include "helpers.h"
 
 FILE* mappings_open(void){
   FILE *mappings = fopen("/proc/self/maps", "r");
-  assert(mappings != NULL && "fopen failed");
+  if(mappings == NULL){
+    logger_fatal(__func__, "fopen failed");
+    return NULL;
+  }
   return mappings;
 }
 
-mapping_text_t mappings_read(FILE *mappings){
-  mapping_text_t text = {0};
+static mapping_text_t* mappings_read(FILE *mappings){
+  mapping_text_t *text = NULL;
+  SAFE_MALLOC(text, sizeof(mapping_text_t), NULL);
   size_t buf_size = MAX_READ_SIZE; 
 
   char *buf = NULL;
   char temp_buf[MAX_READ_SIZE];
   size_t read_bytes = 0;
 
-  buf = malloc(MAX_READ_SIZE);
-  assert(buf != NULL && "malloc failed");
+  SAFE_MALLOC(buf, MAX_READ_SIZE, NULL);
   while((read_bytes = fread(temp_buf, sizeof(char), MAX_READ_SIZE, mappings)) > 0){
     buf_size += read_bytes; 
     strncat(buf, temp_buf,  read_bytes);
-    buf = realloc(buf, buf_size);
-    assert(buf != NULL && "realloc failed");
+    SAFE_REALLOC(buf, buf, buf_size, NULL);
   }
-  text.size = buf_size - MAX_READ_SIZE;
-  text.buffer = buf;
+  text->size = buf_size - MAX_READ_SIZE;
+  text->buffer = buf;
 
   return text;
 }
 
-void mappings_set_addr(char *addr, mapping_entry_t* entry){
+static void mappings_set_addr(char *addr, mapping_entry_t* entry){
   char *pch = NULL;
   pch = strsep(&addr, "-");
-  void* start = (void*)strtoul(pch, NULL, 16);
+  void  *start = (void*)strtoul(pch, NULL, 16);
   pch = strsep(&addr, "-");
-  void* end   = (void*)strtoul(pch, NULL, 16);
+  void  *end   = (void*)strtoul(pch, NULL, 16);
 
   entry->start = start;
   entry->end   = end;
 }
 
-mapping_entry_t *mappings_parse_entry(char *text, size_t text_size){
+static mapping_entry_t* mappings_parse_entry(char *text, size_t text_size){
   /* 
    * The format of the file is:
    *
@@ -82,8 +85,8 @@ mapping_entry_t *mappings_parse_entry(char *text, size_t text_size){
    *   s = shared
    *   p = private (copy on write)
    */
-  mapping_entry_t *entry = (mapping_entry_t*)malloc(sizeof(mapping_entry_t));
-  assert(entry != NULL && "malloc failed");
+  mapping_entry_t *entry = NULL;
+  SAFE_MALLOC(entry, sizeof(mapping_entry_t), NULL);
 
   char *pch  = NULL;
   char *pch2 = NULL;
@@ -111,17 +114,21 @@ mapping_entry_t *mappings_parse_entry(char *text, size_t text_size){
   return entry;
 }
 
-mapping_parsed_t mappings_parse(FILE *mappings){
-  mapping_text_t text = mappings_read(mappings);
-  mapping_parsed_t parsed = {0};
-  mapping_entry_t *current_entry = NULL;
+mapping_parsed_t* mappings_parse(FILE *mappings){
+  mapping_text_t *text = mappings_read(mappings);
+  if(text == NULL) return NULL;
+
+  mapping_entry_t  *current_entry = NULL;
+  mapping_parsed_t *parsed        = NULL;
+  SAFE_MALLOC(parsed, sizeof(mapping_parsed_t), NULL);
+
   char *pch = NULL;
-  pch = strtok(text.buffer, "\n");
+  pch = strtok(text->buffer, "\n");
   while(pch != NULL){
-    parsed.size++;
+    parsed->size++;
     if(current_entry == NULL){
       current_entry = mappings_parse_entry(pch, strlen(pch));
-      parsed.entry = current_entry;
+      parsed->entry = current_entry;
     }
     else{
       current_entry->next = mappings_parse_entry(pch, strlen(pch));
@@ -129,8 +136,25 @@ mapping_parsed_t mappings_parse(FILE *mappings){
     }
     pch = strtok(NULL, "\n");
   }
-  free(text.buffer);
+  free(text->buffer);
   return parsed;
+}
+
+void mappings_iterate(mapping_parsed_t *parsed, bool(*filter)(const char*), void(*callback)(mapping_entry_t *parsed)){
+  mapping_entry_t *current_entry = parsed->entry;
+  for(size_t i = 0; i < parsed->size; i++){
+    if(filter(current_entry->name)) callback(current_entry);
+    current_entry = current_entry->next;
+  }
+}
+
+void *mapping_find_base(mapping_parsed_t *parsed, bool(*filter)(const char*)){
+  mapping_entry_t *current_entry = parsed->entry;
+  for(size_t i = 0; i < parsed->size; i++){
+    if(filter(current_entry->name)) return current_entry->start;
+    current_entry = current_entry->next;
+  }
+  return NULL;
 }
 
 void mappings_free(mapping_parsed_t *parsed){
@@ -141,6 +165,7 @@ void mappings_free(mapping_parsed_t *parsed){
     current_entry = current_entry->next;
     free(to_free);
   }
+  free(parsed);
 }
 
 void mappings_print(mapping_parsed_t *parsed){

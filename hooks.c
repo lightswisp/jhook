@@ -1,21 +1,18 @@
-#define _GNU_SOURCE
-#include <link.h>
 #include <jni.h>
 #include <jvmti.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
 
 #include "helpers.h"
 #include "offsets.h"
 #include "defines.h"
 #include "logger.h"
+#include "mappings.h"
 
 #define LIBJVM "libjvm.so"
-/* libjvm lib globals */
-static bool     libjvm_found;
-static void*    libjvm_base;
+static void *g_libjvm_base  = NULL;
+
 /* libjvm function pointers */
 static __JavaThread      (*java_thread_current)               (void);
 static void              (*remove_unshareable_info)           (__Method this);
@@ -85,55 +82,43 @@ void remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi){
   *fi_entry      = orig_fi;
 }
 
-static int callback(struct dl_phdr_info *info, size_t size, void *module_name){
-  int i;
-  if(libjvm_found) return 0;
-
-  if(strstr(info->dlpi_name, (const char*)module_name) != NULL){
-    logger_log(__func__,"name=%s (%d segments) (%p base)", info->dlpi_name, info->dlpi_phnum, (void*)info->dlpi_addr);
-    libjvm_found = true; 
-    libjvm_base  = (void*)info->dlpi_addr;
-  }
-  return 0;
-}
-
 static void resolve_functions(void){
-  remove_unshareable_info       = libjvm_base + remove_unshareable_info_off;
-  size_of_parameters            = libjvm_base + size_of_parameters_off;
-  method_holder                 = libjvm_base + method_holder_off;
-  class_loader_data             = libjvm_base + class_loader_data_off;
-  new_permanent_symbol          = libjvm_base + new_permanent_symbol_off;
-  access_flags_from             = libjvm_base + access_flags_from_off;
-  const_method                  = libjvm_base + const_method_off;
-  inline_table_sizes            = libjvm_base + inline_table_sizes_off;
-  method_allocate               = libjvm_base + method_allocate_off;
-  java_thread_current           = libjvm_base + java_thread_current_off;
-  growable_array_init           = libjvm_base + growable_array_init_off;
-  growable_array_push           = libjvm_base + growable_array_push_off;
-  constant_pool_allocate        = libjvm_base + constant_pool_allocate_off;
-  instance_klass_constants      = libjvm_base + instance_klass_constants_off;
-  constant_pool_copy_fields     = libjvm_base + constant_pool_copy_fields_off;
-  constant_pool_set_pool_holder = libjvm_base + constant_pool_set_pool_holder_off;
-  constant_pool_symbol_at_put   = libjvm_base + constant_pool_symbol_at_put_off;
-  method_set_constants          = libjvm_base + method_set_constants_off;
-  method_set_name_index         = libjvm_base + method_set_name_index_off;
-  method_set_signature_index    = libjvm_base + method_set_signature_index_off;
-  method_set_interpreter_entry  = libjvm_base + method_set_interpreter_entry_off;
-  method_from_interpreted_entry = libjvm_base + method_from_interpreted_entry_off;
-  const_method_compute_from_sig = libjvm_base + const_method_compute_from_sig_off;
-  interpreter_entry_for_kind    = libjvm_base + interpreter_entry_for_kind_off;
-  merge_in_new_methods          = libjvm_base + merge_in_new_methods_off;
-  method_set_native_function    = libjvm_base + method_set_native_function_off;
+  remove_unshareable_info       = g_libjvm_base + remove_unshareable_info_off;
+  size_of_parameters            = g_libjvm_base + size_of_parameters_off;
+  method_holder                 = g_libjvm_base + method_holder_off;
+  class_loader_data             = g_libjvm_base + class_loader_data_off;
+  new_permanent_symbol          = g_libjvm_base + new_permanent_symbol_off;
+  access_flags_from             = g_libjvm_base + access_flags_from_off;
+  const_method                  = g_libjvm_base + const_method_off;
+  inline_table_sizes            = g_libjvm_base + inline_table_sizes_off;
+  method_allocate               = g_libjvm_base + method_allocate_off;
+  java_thread_current           = g_libjvm_base + java_thread_current_off;
+  growable_array_init           = g_libjvm_base + growable_array_init_off;
+  growable_array_push           = g_libjvm_base + growable_array_push_off;
+  constant_pool_allocate        = g_libjvm_base + constant_pool_allocate_off;
+  instance_klass_constants      = g_libjvm_base + instance_klass_constants_off;
+  constant_pool_copy_fields     = g_libjvm_base + constant_pool_copy_fields_off;
+  constant_pool_set_pool_holder = g_libjvm_base + constant_pool_set_pool_holder_off;
+  constant_pool_symbol_at_put   = g_libjvm_base + constant_pool_symbol_at_put_off;
+  method_set_constants          = g_libjvm_base + method_set_constants_off;
+  method_set_name_index         = g_libjvm_base + method_set_name_index_off;
+  method_set_signature_index    = g_libjvm_base + method_set_signature_index_off;
+  method_set_interpreter_entry  = g_libjvm_base + method_set_interpreter_entry_off;
+  method_from_interpreted_entry = g_libjvm_base + method_from_interpreted_entry_off;
+  const_method_compute_from_sig = g_libjvm_base + const_method_compute_from_sig_off;
+  interpreter_entry_for_kind    = g_libjvm_base + interpreter_entry_for_kind_off;
+  merge_in_new_methods          = g_libjvm_base + merge_in_new_methods_off;
+  method_set_native_function    = g_libjvm_base + method_set_native_function_off;
 
-  checked_exception_length      = libjvm_base + checked_exception_length_off;
-  localvariable_table_length    = libjvm_base + localvariable_table_length_off;
-  exception_table_length        = libjvm_base + exception_table_length_off;
-  method_parameters_length      = libjvm_base + method_parameters_length_off;
-  method_annotations_length     = libjvm_base + method_annotations_length_off;
-  parameter_annotations_length  = libjvm_base + parameter_annotations_length_off;
-  type_annotations_length       = libjvm_base + type_annotations_length_off;
-  default_annotations_length    = libjvm_base + default_annotations_length_off;
-  generic_signature_index       = libjvm_base + generic_signature_index_off;
+  checked_exception_length      = g_libjvm_base + checked_exception_length_off;
+  localvariable_table_length    = g_libjvm_base + localvariable_table_length_off;
+  exception_table_length        = g_libjvm_base + exception_table_length_off;
+  method_parameters_length      = g_libjvm_base + method_parameters_length_off;
+  method_annotations_length     = g_libjvm_base + method_annotations_length_off;
+  parameter_annotations_length  = g_libjvm_base + parameter_annotations_length_off;
+  type_annotations_length       = g_libjvm_base + type_annotations_length_off;
+  default_annotations_length    = g_libjvm_base + default_annotations_length_off;
+  generic_signature_index       = g_libjvm_base + generic_signature_index_off;
 
   logger_log(__func__,"Method::remove_unshareable_info @ %p", remove_unshareable_info);
   logger_log(__func__,"Method::size_of_parameters @ %p", size_of_parameters);
@@ -170,9 +155,8 @@ static void resolve_functions(void){
 }
 
 __GrowableArray array_create(int cap){
-  __GrowableArray array = malloc(GrowableArray_size);
-  assert(array != NULL && "malloc failed");
-  memset(array, 0, GrowableArray_size);
+  __GrowableArray array;
+  SAFE_MALLOC(array, GrowableArray_size, NULL);
   /* mtOther -> 0x0a */
   growable_array_init(array, cap, 0x0a); 
   return array;
@@ -215,9 +199,8 @@ __Method method_create(__Method original_method, const char *method_name, const 
   /*                                 (JVM_ACC_PUBLIC | JVM_ACC_NATIVE) */
   /*                                 (     1         |      256      ) */
   __AccessFlags      flags         = access_flags_from(1 | 256);
-  __InlineTableSizes sizes         = malloc(InlineTableSizes_size);
-  assert(sizes != NULL && "malloc failed");
-  memset(sizes, 0, InlineTableSizes_size); 
+  __InlineTableSizes sizes         = NULL;
+  SAFE_MALLOC(sizes, InlineTableSizes_size, NULL);
 
   int orig_checked_exception_length     = checked_exception_length(orig_cm);
   int orig_localvariable_table_length   = localvariable_table_length(orig_cm);
@@ -277,12 +260,29 @@ __Method method_create(__Method original_method, const char *method_name, const 
   return m;
 }
 
-bool init_hooks(void){
-  dl_iterate_phdr(callback, "libjvm.so");
-  if(libjvm_found){
-    resolve_functions();
-    return true;
-  }
+bool libjvm_filter(const char *name){
+  if(strstr(name, LIBJVM) != NULL) return true;
   return false;
+}
+
+void libjvm_callback(mapping_entry_t *entry){
+
+}
+
+bool init_libjvm(void){
+  asm("int3");
+  FILE *mappings = mappings_open();
+  if(mappings == NULL) return false;
+
+  mapping_parsed_t *parsed_mappings = mappings_parse(mappings);
+  if(parsed_mappings == NULL) return false;
+
+  g_libjvm_base = mapping_find_base(parsed_mappings, libjvm_filter);
+  // for signatures size { 
+    mappings_iterate(parsed_mappings, libjvm_filter, libjvm_callback);
+  // }
+
+  mappings_free(parsed_mappings);
+  return true; 
 }
 
