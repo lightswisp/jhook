@@ -9,21 +9,28 @@
 #include "defines.h"
 #include "logger.h"
 #include "mappings.h"
+#include "sigscan.h"
 
 #define LIBJVM "libjvm.so"
 static void *g_libjvm_base  = NULL;
 
+static uint16_t size_of_parameters(__Method this);
+DEFINE_SIGNATURE(
+    size_of_parameters, 
+    "\x48\x8b\x00\x00\x0f\xb7\x00\x00\x3b",
+    9,
+    "xx??xx??x",
+    9,
+    NULL);
+
 /* libjvm function pointers */
 static __JavaThread      (*java_thread_current)               (void);
 static void              (*remove_unshareable_info)           (__Method this);
-static uint16_t          (*size_of_parameters)                (__Method this);
 static __InstanceKlass   (*method_holder)                     (__Method this);
 static __ClassLoaderData (*class_loader_data)                 (__InstanceKlass this);
 static __Symbol          (*new_permanent_symbol)              (const char* s);
-static __AccessFlags     (*access_flags_from)                 (uint16_t flags);
 static __ConstMethod     (*const_method)                      (__Method this);
 static __Method          (*method_allocate)                   (__ClassLoaderData, int, __AccessFlags, __InlineTableSizes, int, __Symbol, __JavaThread);
-static void              (*inline_table_sizes)                (__InlineTableSizes, int, int, int, int, int, int, int, int, int, int, int);
 static void              (*growable_array_init)               (__GrowableArray, int, int);
 static void              (*growable_array_push)               (__GrowableArray, __Method*);
 static __ConstantPool    (*constant_pool_allocate)            (__ClassLoaderData, int, __JavaThread);
@@ -40,15 +47,6 @@ static void              (*method_set_native_function)        (__Method, unsigne
 static void              (*const_method_compute_from_sig)     (__ConstMethod, __Symbol, bool);
 static unsigned char*    (*interpreter_entry_for_kind)        (enum __MethodKind);
 static void              (*merge_in_new_methods)              (__InstanceKlass, __GrowableArray, __JavaThread);
-static int               (*checked_exception_length)          (__ConstMethod);
-static int               (*localvariable_table_length)        (__ConstMethod);
-static int               (*exception_table_length)            (__ConstMethod);
-static int               (*method_parameters_length)          (__ConstMethod);
-static int               (*method_annotations_length)         (__ConstMethod);
-static int               (*parameter_annotations_length)      (__ConstMethod);
-static int               (*type_annotations_length)           (__ConstMethod);
-static int               (*default_annotations_length)        (__ConstMethod);
-static int               (*generic_signature_index)           (__ConstMethod);
 
 void set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2i, uint64_t **orig_fi){
   // TODO: check if method is native
@@ -84,13 +82,10 @@ void remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi){
 
 static void resolve_functions(void){
   remove_unshareable_info       = g_libjvm_base + remove_unshareable_info_off;
-  size_of_parameters            = g_libjvm_base + size_of_parameters_off;
   method_holder                 = g_libjvm_base + method_holder_off;
   class_loader_data             = g_libjvm_base + class_loader_data_off;
   new_permanent_symbol          = g_libjvm_base + new_permanent_symbol_off;
-  access_flags_from             = g_libjvm_base + access_flags_from_off;
   const_method                  = g_libjvm_base + const_method_off;
-  inline_table_sizes            = g_libjvm_base + inline_table_sizes_off;
   method_allocate               = g_libjvm_base + method_allocate_off;
   java_thread_current           = g_libjvm_base + java_thread_current_off;
   growable_array_init           = g_libjvm_base + growable_array_init_off;
@@ -110,27 +105,14 @@ static void resolve_functions(void){
   merge_in_new_methods          = g_libjvm_base + merge_in_new_methods_off;
   method_set_native_function    = g_libjvm_base + method_set_native_function_off;
 
-  checked_exception_length      = g_libjvm_base + checked_exception_length_off;
-  localvariable_table_length    = g_libjvm_base + localvariable_table_length_off;
-  exception_table_length        = g_libjvm_base + exception_table_length_off;
-  method_parameters_length      = g_libjvm_base + method_parameters_length_off;
-  method_annotations_length     = g_libjvm_base + method_annotations_length_off;
-  parameter_annotations_length  = g_libjvm_base + parameter_annotations_length_off;
-  type_annotations_length       = g_libjvm_base + type_annotations_length_off;
-  default_annotations_length    = g_libjvm_base + default_annotations_length_off;
-  generic_signature_index       = g_libjvm_base + generic_signature_index_off;
-
   logger_log(__func__,"Method::remove_unshareable_info @ %p", remove_unshareable_info);
-  logger_log(__func__,"Method::size_of_parameters @ %p", size_of_parameters);
   logger_log(__func__,"Method::method_holder @ %p", method_holder);
   logger_log(__func__,"Method::constMethod @ %p", const_method);
-  logger_log(__func__,"InstanceKlass::class_loader_data @ %p", class_loader_data);
-  logger_log(__func__,"Symbol::new_permanent_symbol @ %p", new_permanent_symbol);
-  logger_log(__func__,"AccessFlags::accessFlags_from @ %p", access_flags_from);
-  logger_log(__func__,"InlineTableSizes::InlineTableSizes @ %p", inline_table_sizes);
-  logger_log(__func__,"GrowableArray<Method*>::GrowableArray @ %p", growable_array_init);
-  logger_log(__func__,"GrowableArray<Method*>::push @ %p", growable_array_push);
-  logger_log(__func__,"ConstantPool::allocate @ %p", constant_pool_allocate);
+  logger_log(__func__,"InstanceKlass::class_loader_data @ %p", class_loader_data);                     // ok
+  logger_log(__func__,"Symbol::new_permanent_symbol @ %p", new_permanent_symbol);                      // ok
+  logger_log(__func__,"GrowableArray<Method*>::GrowableArray @ %p", growable_array_init);              // ok
+  logger_log(__func__,"GrowableArray<Method*>::push @ %p", growable_array_push);                       // ok
+  logger_log(__func__,"ConstantPool::allocate @ %p", constant_pool_allocate);                          // ok
   logger_log(__func__,"InstanceKlass::constants @ %p", instance_klass_constants);
   logger_log(__func__,"ConstantPool::copy_fields @ %p", constant_pool_copy_fields);
   logger_log(__func__,"ConstantPool::set_pool_holder @ %p", constant_pool_set_pool_holder);
@@ -143,15 +125,6 @@ static void resolve_functions(void){
   logger_log(__func__,"ConstMethod::compute_from_sig @ %p", const_method_compute_from_sig);
   logger_log(__func__,"AbstractInterpreter::entry_for_kind @ %p", interpreter_entry_for_kind);
   logger_log(__func__,"merge_in_new_methods @ %p", merge_in_new_methods);
-  logger_log(__func__, "ConstMethod::checked_exception_length @ %p", checked_exception_length);
-  logger_log(__func__, "ConstMethod::localvariable_table_length @ %p", localvariable_table_length);
-  logger_log(__func__, "ConstMethod::exception_table_length @ %p", exception_table_length);
-  logger_log(__func__, "ConstMethod::method_parameters_length @ %p", method_parameters_length);
-  logger_log(__func__, "ConstMethod::method_annotations_length @ %p", method_annotations_length);
-  logger_log(__func__, "ConstMethod::parameter_annotations_length @ %p", parameter_annotations_length);
-  logger_log(__func__, "ConstMethod::type_annotations_length @ %p", type_annotations_length);
-  logger_log(__func__, "ConstMethod::default_annotations_length @ %p", default_annotations_length);
-  logger_log(__func__, "ConstMethod::generic_signature_index @ %p", generic_signature_index);
 }
 
 __GrowableArray array_create(int cap){
@@ -187,6 +160,7 @@ __Method method_create(__Method original_method, const char *method_name, const 
   uint16_t params_size = size_of_parameters(original_method);
   int max_stack = 0, method_type = 0;
 
+  asm("int3");
   unsigned char*     entry         = interpreter_entry_for_kind(native);
   __JavaThread       thread        = java_thread_current();
   __InstanceKlass    ik            = method_holder(original_method);
@@ -198,40 +172,9 @@ __Method method_create(__Method original_method, const char *method_name, const 
   __ConstantPool     fields        = instance_klass_constants(ik);
   /*                                 (JVM_ACC_PUBLIC | JVM_ACC_NATIVE) */
   /*                                 (     1         |      256      ) */
-  __AccessFlags      flags         = access_flags_from(1 | 256);
+  __AccessFlags      flags         = (     1         |      256      );
   __InlineTableSizes sizes         = NULL;
   SAFE_MALLOC(sizes, InlineTableSizes_size, NULL);
-
-  int orig_checked_exception_length     = checked_exception_length(orig_cm);
-  int orig_localvariable_table_length   = localvariable_table_length(orig_cm);
-  int orig_exception_table_length       = exception_table_length(orig_cm);
-  int orig_method_parameters_length     = method_parameters_length(orig_cm);
-  int orig_method_annotations_length    = method_annotations_length(orig_cm);
-  int orig_parameter_annotations_length = parameter_annotations_length(orig_cm);
-  int orig_type_annotations_length      = type_annotations_length(orig_cm);
-  int orig_default_annotations_length   = default_annotations_length(orig_cm);
-  int orig_generic_signature_index      = generic_signature_index(orig_cm);
-
-  // TODO 
-  // clone table sizes from orig to our method
-  // TODO 
-  // also, we need to bypass java security checks so that we can add methods to classes that start with java
-  // TODO 
-  // Method::link to our new method, so that it could have adapter
-  inline_table_sizes(
-      sizes,
-      orig_localvariable_table_length, 
-      0, // compressed_linenumber_size
-      orig_exception_table_length, 
-      orig_checked_exception_length, 
-      orig_method_parameters_length, 
-      orig_generic_signature_index, 
-      orig_method_annotations_length, 
-      orig_parameter_annotations_length, 
-      orig_type_annotations_length, 
-      orig_default_annotations_length, 
-      0
-  );
 
   constant_pool_copy_fields(cp, fields);
   constant_pool_set_pool_holder(cp, ik);
@@ -265,12 +208,33 @@ bool libjvm_filter(const char *name){
   return false;
 }
 
-void libjvm_callback(mapping_entry_t *entry){
+bool libjvm_callback(mapping_entry_t *entry, signature_t *signature){
+  uint8_t *addr = sigscan(entry->start, entry->end, signature->signature, signature->signature_size, signature->mask, signature->mask_size); 
+  if(addr != NULL){
+    signature->found_at = addr;
+    return true;
+  }
+  return false;
+}
 
+static uint16_t size_of_parameters(__Method this){
+  if(OBTAIN_SIGNATURE(size_of_parameters).found_at == NULL)
+    return 0;
+
+  /* 48 8B 51 08  mov rdx, [rcx+8] */
+  /* ---------^   + 0x03           */
+  uint8_t cm_off = *(OBTAIN_SIGNATURE(size_of_parameters).found_at + 0x03);
+  __ConstMethod const_method = *(__ConstMethod*)((uint8_t*)this + cm_off);
+
+  /* 0F B7 72 2E  movzx esi, word ptr [rdx+2Eh] */
+  /* ---------^   + 0x07                        */
+  uint8_t sz_off = *(OBTAIN_SIGNATURE(size_of_parameters).found_at + 0x07);
+  uint16_t _size_of_parameters = *((uint8_t*)const_method + sz_off);
+
+  return _size_of_parameters;
 }
 
 bool init_libjvm(void){
-  asm("int3");
   FILE *mappings = mappings_open();
   if(mappings == NULL) return false;
 
@@ -278,10 +242,10 @@ bool init_libjvm(void){
   if(parsed_mappings == NULL) return false;
 
   g_libjvm_base = mapping_find_base(parsed_mappings, libjvm_filter);
-  // for signatures size { 
-    mappings_iterate(parsed_mappings, libjvm_filter, libjvm_callback);
-  // }
+  mappings_iterate(parsed_mappings, libjvm_filter, libjvm_callback, &(OBTAIN_SIGNATURE(size_of_parameters)));
 
+  logger_log(__func__, "size_of_parameters found at %p", OBTAIN_SIGNATURE(size_of_parameters).found_at);
+  resolve_functions();
   mappings_free(parsed_mappings);
   return true; 
 }

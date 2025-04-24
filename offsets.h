@@ -2,7 +2,9 @@
  * for better portability and support of various java versions, 
  * please consider adding signature scan in the future 
  */
+#include <stdint.h>
 #pragma once
+
 /* field offsets */
 #define fi_entry_off                      0x0000000d
 #define i2i_entry_off                     0x0000000a

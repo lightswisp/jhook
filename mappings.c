@@ -8,6 +8,7 @@
 #include "mappings.h"
 #include "logger.h"
 #include "helpers.h"
+#include "sigscan.h"
 
 FILE* mappings_open(void){
   FILE *mappings = fopen("/proc/self/maps", "r");
@@ -140,10 +141,11 @@ mapping_parsed_t* mappings_parse(FILE *mappings){
   return parsed;
 }
 
-void mappings_iterate(mapping_parsed_t *parsed, bool(*filter)(const char*), void(*callback)(mapping_entry_t *parsed)){
+void mappings_iterate(mapping_parsed_t *parsed, bool(*filter)(const char*), bool(*callback)(mapping_entry_t *parsed, signature_t *signature), signature_t *signature){
   mapping_entry_t *current_entry = parsed->entry;
   for(size_t i = 0; i < parsed->size; i++){
-    if(filter(current_entry->name)) callback(current_entry);
+    if(filter(current_entry->name)) 
+      if(callback(current_entry, signature)) break;
     current_entry = current_entry->next;
   }
 }

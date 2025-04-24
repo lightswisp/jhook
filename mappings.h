@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <linux/limits.h>
 
+#include "sigscan.h"
+
 #define MAX_READ_SIZE 4096 
 
 typedef struct {
@@ -27,5 +29,5 @@ extern FILE*             mappings_open(void);
 extern mapping_parsed_t* mappings_parse(FILE *mappings);
 extern void              mappings_free(mapping_parsed_t *parsed);
 extern void              mappings_print(mapping_parsed_t *parsed);
-extern void              mappings_iterate(mapping_parsed_t *parsed, bool(*filter)(const char*), void(*callback)(mapping_entry_t *parsed));
+extern void              mappings_iterate(mapping_parsed_t *parsed, bool(*filter)(const char*), bool(*callback)(mapping_entry_t *parsed, signature_t* signature), signature_t *signature);
 extern void*             mapping_find_base(mapping_parsed_t *parsed, bool(*filter)(const char*));
