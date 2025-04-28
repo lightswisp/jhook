@@ -18,10 +18,14 @@ static uint16_t size_of_parameters(__Method this);
 DEFINE_SIGNATURE(
     size_of_parameters, 
     "\x48\x8b\x00\x00\x0f\xb7\x00\x00\x3b",
-    9,
     "xx??xx??x",
-    9,
     NULL);
+
+static uint8_t* interpreter_entry_for_kind(enum __MethodKind);
+DEFINE_SIGNATURE(interpreter_entry_for_kind, 
+                 "\x4C\x8D\x2D\x2A\x2A\x2A\x2A\xBE\x2A\x2A\x2A\x2A\x49\x89\x45\x2A\x48\x8B\x85\x2A\x2A\x2A\x2A\x48\x8B\x38\xE8\x2A\x2A\x2A\x2A\x48\x8B\x85", 
+                 "xxx????x????xxx?xxx????xxxx????xxx", 
+                 NULL);
 
 /* libjvm function pointers */
 static __JavaThread      (*java_thread_current)               (void);
@@ -45,7 +49,6 @@ static void              (*method_set_interpreter_entry)      (__Method, unsigne
 static unsigned char*    (*method_from_interpreted_entry)     (__Method);
 static void              (*method_set_native_function)        (__Method, unsigned char*, bool);
 static void              (*const_method_compute_from_sig)     (__ConstMethod, __Symbol, bool);
-static unsigned char*    (*interpreter_entry_for_kind)        (enum __MethodKind);
 static void              (*merge_in_new_methods)              (__InstanceKlass, __GrowableArray, __JavaThread);
 
 void set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2i, uint64_t **orig_fi){
@@ -101,7 +104,6 @@ static void resolve_functions(void){
   method_set_interpreter_entry  = g_libjvm_base + method_set_interpreter_entry_off;
   method_from_interpreted_entry = g_libjvm_base + method_from_interpreted_entry_off;
   const_method_compute_from_sig = g_libjvm_base + const_method_compute_from_sig_off;
-  interpreter_entry_for_kind    = g_libjvm_base + interpreter_entry_for_kind_off;
   merge_in_new_methods          = g_libjvm_base + merge_in_new_methods_off;
   method_set_native_function    = g_libjvm_base + method_set_native_function_off;
 
@@ -217,6 +219,17 @@ bool libjvm_callback(mapping_entry_t *entry, signature_t *signature){
   return false;
 }
 
+static uint8_t* interpreter_entry_for_kind(enum __MethodKind m){
+  if(OBTAIN_SIGNATURE(size_of_parameters).found_at == NULL)
+    return 0;
+
+  /* 4C 8D 2D 31 66 55 00  lea r13, [rip+0x00556631] */
+  /* ---------^  + 0x03                              */
+  uint32_t et_off = *(uint32_t*)(OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at + 0x03);
+  uint8_t **entry_table = (uint8_t**)(OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at + 0x07 + et_off);
+  return entry_table[m];
+}
+
 static uint16_t size_of_parameters(__Method this){
   if(OBTAIN_SIGNATURE(size_of_parameters).found_at == NULL)
     return 0;
@@ -242,9 +255,21 @@ bool init_libjvm(void){
   if(parsed_mappings == NULL) return false;
 
   g_libjvm_base = mapping_find_base(parsed_mappings, libjvm_filter);
-  mappings_iterate(parsed_mappings, libjvm_filter, libjvm_callback, &(OBTAIN_SIGNATURE(size_of_parameters)));
+  mappings_iterate(
+      parsed_mappings, 
+      libjvm_filter, 
+      libjvm_callback, 
+      &(OBTAIN_SIGNATURE(size_of_parameters))
+  );
+  mappings_iterate(
+      parsed_mappings, 
+      libjvm_filter, 
+      libjvm_callback, 
+      &(OBTAIN_SIGNATURE(interpreter_entry_for_kind))
+  );
 
   logger_log(__func__, "size_of_parameters found at %p", OBTAIN_SIGNATURE(size_of_parameters).found_at);
+  logger_log(__func__, "interpreter_entry_for_kind found at %p", OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at);
   resolve_functions();
   mappings_free(parsed_mappings);
   return true; 
