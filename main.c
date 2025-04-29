@@ -1,3 +1,16 @@
+/* +----------------------------------------------------------------------+ 
+ * |  Copyright (C) 2025 lightswisp                                       |
+ * |                                                                      |
+ * |  Everyone is permitted to copy and distribute verbatim or modified   |
+ * |  copies of this license document, and changing it is allowed as long |
+ * |  as the name is changed.                                             |
+ * |                                                                      |
+ * |         DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE                  |
+ * |  TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION     |
+ * |                                                                      |
+ * |  0. You just DO WHAT THE FUCK YOU WANT TO.                           |
+ * +----------------------------------------------------------------------+
+ */
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -101,6 +114,8 @@ void* __main_thread(void *a)
   logger_log(__func__, "attached to jvm thread");
 
   GET_CLASS_NAME_BY_IDX(readLine) = find_class(g_env, CLASS_NAME);
+  if(GET_CLASS_NAME_BY_IDX(readLine) == NULL) return NULL;
+
   GET_HOOK_NAME_BY_IDX(readLine) = find_method(
       g_env, 
       CLASS_NAME, 
@@ -116,6 +131,7 @@ void* __main_thread(void *a)
 
   /* this one shouldn't fail */
   __Method orig = resolve_jmethod_id(GET_HOOK_NAME_BY_IDX(readLine));
+  asm("int3");
   __Method m = method_create(orig, METHOD_NAME_HK, METHOD_SIG);
   if(m == NULL) return NULL;
 

@@ -1,3 +1,16 @@
+/* +----------------------------------------------------------------------+ 
+ * |  Copyright (C) 2025 lightswisp                                       |
+ * |                                                                      |
+ * |  Everyone is permitted to copy and distribute verbatim or modified   |
+ * |  copies of this license document, and changing it is allowed as long |
+ * |  as the name is changed.                                             |
+ * |                                                                      |
+ * |         DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE                  |
+ * |  TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION     |
+ * |                                                                      |
+ * |  0. You just DO WHAT THE FUCK YOU WANT TO.                           |
+ * +----------------------------------------------------------------------+
+ */
 #pragma once 
 #define _GNU_SOURCE
 #include <link.h>
@@ -16,8 +29,8 @@ typedef struct {
   uint8_t *found_at;
 } signature_t;
 
-#define DEFINE_SIGNATURE(x, signature, signature_size, mask, mask_size, found_at) \
-  signature_t g_signature_##x = { signature, signature_size, mask, mask_size, found_at }
+#define DEFINE_SIGNATURE(x, signature, mask, found_at) \
+  signature_t g_signature_##x = { signature, sizeof(signature), mask, sizeof(mask), found_at }
 
 #define OBTAIN_SIGNATURE(x) g_signature_##x
 

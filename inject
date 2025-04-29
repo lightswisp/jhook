@@ -1,4 +1,18 @@
 #!/bin/ruby 
+
+# +----------------------------------------------------------------------+ 
+# |  Copyright (C) 2025 lightswisp                                       |
+# |                                                                      |
+# |  Everyone is permitted to copy and distribute verbatim or modified   |
+# |  copies of this license document, and changing it is allowed as long |
+# |  as the name is changed.                                             |
+# |                                                                      |
+# |         DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE                  |
+# |  TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION     |
+# |                                                                      |
+# |  0. You just DO WHAT THE FUCK YOU WANT TO.                           |
+# +----------------------------------------------------------------------+
+
 require 'pathname'
 
 SELF              = Process.pid
@@ -25,7 +39,7 @@ end
 
 def inject(pid, lib_name, should_detach)
   #cmd = sprintf('gdb -n -q -batch-silent -p %d -ex "call (void*)dlopen(\"%s\", %d)"', pid, lib_name, RTLD_LAZY)
-  cmd = sprintf('gf2 gdb -p %d -ex "call (void*)dlopen(\"%s\", %d)"', pid, lib_name, RTLD_LAZY)
+  cmd = sprintf('gf2 -p %d -ex "call (void*)dlopen(\"%s\", %d)"', pid, lib_name, RTLD_LAZY)
   if should_detach
     cmd += " -ex \"set logging off\""
     cmd += " -ex \"detach\""
