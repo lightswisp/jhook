@@ -19,16 +19,26 @@ DEFINE_SIGNATURE(
     size_of_parameters, 
     "\x48\x8b\x00\x00\x0f\xb7\x00\x00\x3b",
     "xx??xx??x",
-    NULL);
+    NULL
+);
 
 static uint8_t* interpreter_entry_for_kind(enum __MethodKind);
-DEFINE_SIGNATURE(interpreter_entry_for_kind, 
-                 "\x4C\x8D\x2D\x2A\x2A\x2A\x2A\xBE\x2A\x2A\x2A\x2A\x49\x89\x45\x2A\x48\x8B\x85\x2A\x2A\x2A\x2A\x48\x8B\x38\xE8\x2A\x2A\x2A\x2A\x48\x8B\x85", 
-                 "xxx????x????xxx?xxx????xxxx????xxx", 
-                 NULL);
+DEFINE_SIGNATURE(
+    interpreter_entry_for_kind, 
+    "\x4C\x8D\x2D\x2A\x2A\x2A\x2A\xBE\x2A\x2A\x2A\x2A\x49\x89\x45\x2A\x48\x8B\x85\x2A\x2A\x2A\x2A\x48\x8B\x38\xE8\x2A\x2A\x2A\x2A\x48\x8B\x85", 
+    "xxx????x????xxx?xxx????xxxx????xxx", 
+    NULL
+);
+
+static __JavaThread(*java_thread_current)(void);
+DEFINE_SIGNATURE(
+    java_thread_current, 
+    "\x48\x8D\x05\x2A\x2A\x2A\x2A\x8B\x00\x85\xC0\x74\x2A\x48\x8D\x05\x2A\x2A\x2A\x2A\x55\x48\x89\xE5\x8B\x38\xE8\x2A\x2A\x2A\x2A\x48\x85\xC0\x74\x2A\x48\x8B\x80\x2A\x2A\x2A\x2A\x5D\xC3", 
+    "xxx????xxxxx?xxx????xxxxxxx????xxxx?xxx????xx", 
+    NULL
+);
 
 /* libjvm function pointers */
-static __JavaThread      (*java_thread_current)               (void);
 static void              (*remove_unshareable_info)           (__Method this);
 static __InstanceKlass   (*method_holder)                     (__Method this);
 static __ClassLoaderData (*class_loader_data)                 (__InstanceKlass this);
@@ -84,13 +94,14 @@ void remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi){
 }
 
 static void resolve_functions(void){
+
+  java_thread_current = (void*)OBTAIN_SIGNATURE(java_thread_current).found_at;
   remove_unshareable_info       = g_libjvm_base + remove_unshareable_info_off;
   method_holder                 = g_libjvm_base + method_holder_off;
   class_loader_data             = g_libjvm_base + class_loader_data_off;
   new_permanent_symbol          = g_libjvm_base + new_permanent_symbol_off;
   const_method                  = g_libjvm_base + const_method_off;
   method_allocate               = g_libjvm_base + method_allocate_off;
-  java_thread_current           = g_libjvm_base + java_thread_current_off;
   growable_array_init           = g_libjvm_base + growable_array_init_off;
   growable_array_push           = g_libjvm_base + growable_array_push_off;
   constant_pool_allocate        = g_libjvm_base + constant_pool_allocate_off;
@@ -220,9 +231,6 @@ bool libjvm_callback(mapping_entry_t *entry, signature_t *signature){
 }
 
 static uint8_t* interpreter_entry_for_kind(enum __MethodKind m){
-  if(OBTAIN_SIGNATURE(size_of_parameters).found_at == NULL)
-    return 0;
-
   /* 4C 8D 2D 31 66 55 00  lea r13, [rip+0x00556631] */
   /* ---------^  + 0x03                              */
   uint32_t et_off = *(uint32_t*)(OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at + 0x03);
@@ -231,9 +239,6 @@ static uint8_t* interpreter_entry_for_kind(enum __MethodKind m){
 }
 
 static uint16_t size_of_parameters(__Method this){
-  if(OBTAIN_SIGNATURE(size_of_parameters).found_at == NULL)
-    return 0;
-
   /* 48 8B 51 08  mov rdx, [rcx+8] */
   /* ---------^   + 0x03           */
   uint8_t cm_off = *(OBTAIN_SIGNATURE(size_of_parameters).found_at + 0x03);
@@ -248,6 +253,14 @@ static uint16_t size_of_parameters(__Method this){
 }
 
 bool init_libjvm(void){
+
+#define FOUND_AT_NON_NULL_ASSERT(x) do{                         \
+  if(OBTAIN_SIGNATURE(x).found_at == NULL){                     \
+    logger_fatal(__func__, "failed to resolve "#x" signature"); \
+    return false;                                               \
+  }                                                             \
+}while(0)
+
   FILE *mappings = mappings_open();
   if(mappings == NULL) return false;
 
@@ -255,21 +268,35 @@ bool init_libjvm(void){
   if(parsed_mappings == NULL) return false;
 
   g_libjvm_base = mapping_find_base(parsed_mappings, libjvm_filter);
+
   mappings_iterate(
       parsed_mappings, 
       libjvm_filter, 
       libjvm_callback, 
       &(OBTAIN_SIGNATURE(size_of_parameters))
   );
+  FOUND_AT_NON_NULL_ASSERT(size_of_parameters);
+
   mappings_iterate(
       parsed_mappings, 
       libjvm_filter, 
       libjvm_callback, 
       &(OBTAIN_SIGNATURE(interpreter_entry_for_kind))
   );
+  FOUND_AT_NON_NULL_ASSERT(interpreter_entry_for_kind);
+
+  mappings_iterate(
+      parsed_mappings, 
+      libjvm_filter, 
+      libjvm_callback, 
+      &(OBTAIN_SIGNATURE(java_thread_current))
+  );
+  FOUND_AT_NON_NULL_ASSERT(java_thread_current);
 
   logger_log(__func__, "size_of_parameters found at %p", OBTAIN_SIGNATURE(size_of_parameters).found_at);
   logger_log(__func__, "interpreter_entry_for_kind found at %p", OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at);
+  logger_log(__func__, "java_thread_current found at %p", OBTAIN_SIGNATURE(java_thread_current).found_at);
+  asm("int3");
   resolve_functions();
   mappings_free(parsed_mappings);
   return true; 
