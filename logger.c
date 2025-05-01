@@ -28,7 +28,7 @@ void logger_log(const char *func, const char *fmt, ...){
   va_start(args, fmt);
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   strftime(time_buffer, sizeof(time_buffer), "%F %X", tm);
-  printf("(LOG @ %s) %s: %s\n", time_buffer, func, buffer);
+  printf(COLOR_START(GREEN)"[LOG @ %s]"COLOR_START(YELLOW)" %s:"COLOR_END" %s\n", time_buffer, func, buffer);
   va_end(args);
 }
 
@@ -44,7 +44,7 @@ void logger_warn(const char *func, const char *fmt, ...){
   va_start(args, fmt);
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   strftime(time_buffer, sizeof(time_buffer), "%F %X", tm);
-  printf("(WARN @ %s) %s: %s\n", time_buffer, func, buffer);
+  printf(COLOR_START(RED)"[WARN @ %s]"COLOR_START(YELLOW)" %s:"COLOR_END" %s\n", time_buffer, func, buffer);
   va_end(args);
 }
 
@@ -60,7 +60,7 @@ void logger_fatal(const char *func, const char *fmt, ...){
   va_start(args, fmt);
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   strftime(time_buffer, sizeof(time_buffer), "%F %X", tm);
-  fprintf(stderr, "(FATAL @ %s) %s: %s\n", time_buffer, func, buffer);
+  fprintf(stderr, COLOR_START(RED)"[FATAL @ %s]"COLOR_START(YELLOW)" %s:"COLOR_END" %s\n", time_buffer, func, buffer);
   va_end(args);
 }
 

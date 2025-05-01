@@ -14,6 +14,11 @@
 #pragma once
 #define LOG_MAX_BUFFER_SIZE 1024
 #define LOG_MAX_TIME_BUFFER_SIZE 128
+#define COLOR_START(x) "\e["x"m"
+#define COLOR_END      "\e[0m"
+#define RED            "31"
+#define GREEN          "32" 
+#define YELLOW         "33"
 
 extern void logger_log  (const char *func, const char *fmt, ...);
 extern void logger_warn (const char *func, const char *fmt, ...);
