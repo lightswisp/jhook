@@ -52,9 +52,16 @@ DEFINE_SIGNATURE(
     NULL
 );
 
+static __InstanceKlass method_holder(__Method this);
+DEFINE_SIGNATURE(
+    method_holder, 
+    "\x49\x8B\x45\x2A\x48\x8B\x40\x2A\x48\x8B\x78\x2A\xE8\x2A\x2A\x2A\x2A\x4C\x89\xE7\x49\x89\xC5\xE8", 
+    "xxx?xxx?xxx?x????xxxxxxx", 
+    NULL
+);
+
 /* libjvm function pointers */
 static void              (*remove_unshareable_info)           (__Method this);
-static __InstanceKlass   (*method_holder)                     (__Method this);
 static __ClassLoaderData (*class_loader_data)                 (__InstanceKlass this);
 static __Symbol          (*new_permanent_symbol)              (const char* s);
 static __ConstMethod     (*const_method)                      (__Method this);
@@ -111,7 +118,6 @@ static void resolve_functions(void){
 
   java_thread_current = (void*)OBTAIN_SIGNATURE(java_thread_current).found_at;
   remove_unshareable_info       = g_libjvm_base + remove_unshareable_info_off;
-  method_holder                 = g_libjvm_base + method_holder_off;
   class_loader_data             = g_libjvm_base + class_loader_data_off;
   new_permanent_symbol          = g_libjvm_base + new_permanent_symbol_off;
   const_method                  = g_libjvm_base + const_method_off;
@@ -266,6 +272,25 @@ static uint16_t size_of_parameters(__Method this){
   return _size_of_parameters;
 }
 
+static __InstanceKlass method_holder(__Method this){
+  /*
+   * 49 8B 45 08  mov rax, [r13+8]
+   * ---------^   + 0x03
+   * 48 8B 40 08  mov rax, [rax+8]
+   * ---------^   + 0x07
+   * 48 8B 78 18  mov rdi, [rax+18h]
+   * ---------^   + 0x0B
+  */
+  uint8_t off1 = *(OBTAIN_SIGNATURE(method_holder).found_at + 0x03);
+  uint8_t off2 = *(OBTAIN_SIGNATURE(method_holder).found_at + 0x07);
+  uint8_t off3 = *(OBTAIN_SIGNATURE(method_holder).found_at + 0x0B);
+
+  uint8_t *p1  = *(uint8_t**)((uint8_t*)this + off1);
+  uint8_t *p2  = *(uint8_t**)((uint8_t*)p1   + off2);
+  uint8_t *p3  = *(uint8_t**)((uint8_t*)p2   + off3);
+  return (__InstanceKlass)p3;
+}
+
 bool init_libjvm(void){
 
 #define FOUND_AT_NON_NULL_ASSERT(x) do{                         \
@@ -307,10 +332,18 @@ bool init_libjvm(void){
   );
   FOUND_AT_NON_NULL_ASSERT(java_thread_current);
 
+  mappings_iterate(
+      parsed_mappings, 
+      libjvm_filter, 
+      libjvm_callback, 
+      &(OBTAIN_SIGNATURE(method_holder))
+  );
+  FOUND_AT_NON_NULL_ASSERT(method_holder);
+
   logger_log(__func__, "size_of_parameters found at %p", OBTAIN_SIGNATURE(size_of_parameters).found_at);
   logger_log(__func__, "interpreter_entry_for_kind found at %p", OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at);
   logger_log(__func__, "java_thread_current found at %p", OBTAIN_SIGNATURE(java_thread_current).found_at);
-  asm("int3");
+  logger_log(__func__, "method_holder found at %p", OBTAIN_SIGNATURE(method_holder).found_at);
   resolve_functions();
   mappings_free(parsed_mappings);
   return true; 
