@@ -19,6 +19,17 @@
 
 #include "defines.h"
 
+typedef struct {
+  char class_name[4096];
+  char method_name[4096];
+  char method_sig[4096];
+  char method_java_name[4096];
+  bool method_is_static;
+  jmethodID method_id_orig;
+  jmethodID method_id_hook;
+  JNINativeMethod native_detour[1];
+} hook_t;
+
 extern void             set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2i, uint64_t **orig_fi);
 extern void             remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi);
 extern bool             init_libjvm(void);
@@ -102,11 +113,12 @@ extern void             method_set_native(__Method method, unsigned char *entry)
   set_hook(g_target_mid_##x, (uint64_t*)hook_entry_##x, &g_orig_i2i_entry_##x, &g_orig_fi_entry_##x); \
 } while(0)
 
-#define SET_HOOK(x, method, interpreter) do{ \
-  g_initialized_##x = true;                  \
-  g_hook_method_##x = method;                \
-  g_hook_interpreter_##x = interpreter;      \
-  _SET_HOOK(x);                              \
+#define SET_HOOK(x, orig, hook) do{                                   \
+  g_initialized_##x = true;                                           \
+  g_target_mid_##x  = orig;                                           \
+  g_hook_method_##x = resolve_jmethod_id(hook);                       \
+  g_hook_interpreter_##x = method_interpreter_get(g_hook_method_##x); \
+  _SET_HOOK(x);                                                       \
 } while(0)
 
 #define GET_HOOK_NAME_BY_IDX(x) (g_target_mid_##x)

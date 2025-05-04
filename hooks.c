@@ -116,48 +116,48 @@ void remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi){
 
 static void resolve_functions(void){
 
-  java_thread_current = (void*)OBTAIN_SIGNATURE(java_thread_current).found_at;
-  remove_unshareable_info       = g_libjvm_base + remove_unshareable_info_off;
-  class_loader_data             = g_libjvm_base + class_loader_data_off;
-  new_permanent_symbol          = g_libjvm_base + new_permanent_symbol_off;
-  const_method                  = g_libjvm_base + const_method_off;
-  method_allocate               = g_libjvm_base + method_allocate_off;
-  growable_array_init           = g_libjvm_base + growable_array_init_off;
-  growable_array_push           = g_libjvm_base + growable_array_push_off;
-  constant_pool_allocate        = g_libjvm_base + constant_pool_allocate_off;
-  instance_klass_constants      = g_libjvm_base + instance_klass_constants_off;
-  constant_pool_copy_fields     = g_libjvm_base + constant_pool_copy_fields_off;
-  constant_pool_set_pool_holder = g_libjvm_base + constant_pool_set_pool_holder_off;
-  constant_pool_symbol_at_put   = g_libjvm_base + constant_pool_symbol_at_put_off;
-  method_set_constants          = g_libjvm_base + method_set_constants_off;
-  method_set_name_index         = g_libjvm_base + method_set_name_index_off;
-  method_set_signature_index    = g_libjvm_base + method_set_signature_index_off;
-  method_set_interpreter_entry  = g_libjvm_base + method_set_interpreter_entry_off;
+  //java_thread_current = (void*)OBTAIN_SIGNATURE(java_thread_current).found_at;
+  //remove_unshareable_info       = g_libjvm_base + remove_unshareable_info_off;
+  //class_loader_data             = g_libjvm_base + class_loader_data_off;
+  //new_permanent_symbol          = g_libjvm_base + new_permanent_symbol_off;
+  //const_method                  = g_libjvm_base + const_method_off;
+  //method_allocate               = g_libjvm_base + method_allocate_off;
+  //growable_array_init           = g_libjvm_base + growable_array_init_off;
+  //growable_array_push           = g_libjvm_base + growable_array_push_off;
+  //constant_pool_allocate        = g_libjvm_base + constant_pool_allocate_off;
+  //instance_klass_constants      = g_libjvm_base + instance_klass_constants_off;
+  //constant_pool_copy_fields     = g_libjvm_base + constant_pool_copy_fields_off;
+  //constant_pool_set_pool_holder = g_libjvm_base + constant_pool_set_pool_holder_off;
+  //constant_pool_symbol_at_put   = g_libjvm_base + constant_pool_symbol_at_put_off;
+  //method_set_constants          = g_libjvm_base + method_set_constants_off;
+  //method_set_name_index         = g_libjvm_base + method_set_name_index_off;
+  //method_set_signature_index    = g_libjvm_base + method_set_signature_index_off;
+  //method_set_interpreter_entry  = g_libjvm_base + method_set_interpreter_entry_off;
   method_from_interpreted_entry = g_libjvm_base + method_from_interpreted_entry_off;
-  const_method_compute_from_sig = g_libjvm_base + const_method_compute_from_sig_off;
-  merge_in_new_methods          = g_libjvm_base + merge_in_new_methods_off;
-  method_set_native_function    = g_libjvm_base + method_set_native_function_off;
+  //const_method_compute_from_sig = g_libjvm_base + const_method_compute_from_sig_off;
+  //merge_in_new_methods          = g_libjvm_base + merge_in_new_methods_off;
+  //method_set_native_function    = g_libjvm_base + method_set_native_function_off;
 
-  logger_log(__func__,"Method::remove_unshareable_info @ %p", remove_unshareable_info);
-  logger_log(__func__,"Method::method_holder @ %p", method_holder);
-  logger_log(__func__,"Method::constMethod @ %p", const_method);
-  logger_log(__func__,"InstanceKlass::class_loader_data @ %p", class_loader_data);                     // ok
-  logger_log(__func__,"Symbol::new_permanent_symbol @ %p", new_permanent_symbol);                      // ok
-  logger_log(__func__,"GrowableArray<Method*>::GrowableArray @ %p", growable_array_init);              // ok
-  logger_log(__func__,"GrowableArray<Method*>::push @ %p", growable_array_push);                       // ok
-  logger_log(__func__,"ConstantPool::allocate @ %p", constant_pool_allocate);                          // ok
-  logger_log(__func__,"InstanceKlass::constants @ %p", instance_klass_constants);
-  logger_log(__func__,"ConstantPool::copy_fields @ %p", constant_pool_copy_fields);
-  logger_log(__func__,"ConstantPool::set_pool_holder @ %p", constant_pool_set_pool_holder);
-  logger_log(__func__,"ConstantPool::symbol_at_put @ %p", constant_pool_symbol_at_put);
-  logger_log(__func__,"Method::set_constants @ %p", method_set_constants);
-  logger_log(__func__,"Method::set_name_index @ %p", method_set_name_index);
-  logger_log(__func__,"Method::set_signature_index @ %p", method_set_signature_index);
-  logger_log(__func__,"Method::set_interpreter_entry @ %p", method_set_interpreter_entry);
-  logger_log(__func__,"Method::set_native_function @ %p", method_set_native_function);
-  logger_log(__func__,"ConstMethod::compute_from_sig @ %p", const_method_compute_from_sig);
-  logger_log(__func__,"AbstractInterpreter::entry_for_kind @ %p", interpreter_entry_for_kind);
-  logger_log(__func__,"merge_in_new_methods @ %p", merge_in_new_methods);
+  //logger_log(__func__,"Method::remove_unshareable_info @ %p", remove_unshareable_info);
+  //logger_log(__func__,"Method::method_holder @ %p", method_holder);
+  //logger_log(__func__,"Method::constMethod @ %p", const_method);
+  //logger_log(__func__,"InstanceKlass::class_loader_data @ %p", class_loader_data);                     // ok
+  //logger_log(__func__,"Symbol::new_permanent_symbol @ %p", new_permanent_symbol);                      // ok
+  //logger_log(__func__,"GrowableArray<Method*>::GrowableArray @ %p", growable_array_init);              // ok
+  //logger_log(__func__,"GrowableArray<Method*>::push @ %p", growable_array_push);                       // ok
+  //logger_log(__func__,"ConstantPool::allocate @ %p", constant_pool_allocate);                          // ok
+  //logger_log(__func__,"InstanceKlass::constants @ %p", instance_klass_constants);
+  //logger_log(__func__,"ConstantPool::copy_fields @ %p", constant_pool_copy_fields);
+  //logger_log(__func__,"ConstantPool::set_pool_holder @ %p", constant_pool_set_pool_holder);
+  //logger_log(__func__,"ConstantPool::symbol_at_put @ %p", constant_pool_symbol_at_put);
+  //logger_log(__func__,"Method::set_constants @ %p", method_set_constants);
+  //logger_log(__func__,"Method::set_name_index @ %p", method_set_name_index);
+  //logger_log(__func__,"Method::set_signature_index @ %p", method_set_signature_index);
+  //logger_log(__func__,"Method::set_interpreter_entry @ %p", method_set_interpreter_entry);
+  //logger_log(__func__,"Method::set_native_function @ %p", method_set_native_function);
+  //logger_log(__func__,"ConstMethod::compute_from_sig @ %p", const_method_compute_from_sig);
+  //logger_log(__func__,"AbstractInterpreter::entry_for_kind @ %p", interpreter_entry_for_kind);
+  //logger_log(__func__,"merge_in_new_methods @ %p", merge_in_new_methods);
 }
 
 __GrowableArray array_create(int cap){
@@ -193,7 +193,6 @@ __Method method_create(__Method original_method, const char *method_name, const 
   uint16_t params_size = size_of_parameters(original_method);
   int max_stack = 0, method_type = 0;
 
-  asm("int3");
   unsigned char*     entry         = interpreter_entry_for_kind(native);
   __JavaThread       thread        = java_thread_current();
   __InstanceKlass    ik            = method_holder(original_method);
@@ -308,44 +307,44 @@ bool init_libjvm(void){
 
   g_libjvm_base = mapping_find_base(parsed_mappings, libjvm_filter);
 
-  mappings_iterate(
-      parsed_mappings, 
-      libjvm_filter, 
-      libjvm_callback, 
-      &(OBTAIN_SIGNATURE(size_of_parameters))
-  );
-  FOUND_AT_NON_NULL_ASSERT(size_of_parameters);
+  //mappings_iterate(
+  //    parsed_mappings, 
+  //    libjvm_filter, 
+  //    libjvm_callback, 
+  //    &(OBTAIN_SIGNATURE(size_of_parameters))
+  //);
+  //FOUND_AT_NON_NULL_ASSERT(size_of_parameters);
 
-  mappings_iterate(
-      parsed_mappings, 
-      libjvm_filter, 
-      libjvm_callback, 
-      &(OBTAIN_SIGNATURE(interpreter_entry_for_kind))
-  );
-  FOUND_AT_NON_NULL_ASSERT(interpreter_entry_for_kind);
+  //mappings_iterate(
+  //    parsed_mappings, 
+  //    libjvm_filter, 
+  //    libjvm_callback, 
+  //    &(OBTAIN_SIGNATURE(interpreter_entry_for_kind))
+  //);
+  //FOUND_AT_NON_NULL_ASSERT(interpreter_entry_for_kind);
 
-  mappings_iterate(
-      parsed_mappings, 
-      libjvm_filter, 
-      libjvm_callback, 
-      &(OBTAIN_SIGNATURE(java_thread_current))
-  );
-  FOUND_AT_NON_NULL_ASSERT(java_thread_current);
+  //mappings_iterate(
+  //    parsed_mappings, 
+  //    libjvm_filter, 
+  //    libjvm_callback, 
+  //    &(OBTAIN_SIGNATURE(java_thread_current))
+  //);
+  //FOUND_AT_NON_NULL_ASSERT(java_thread_current);
 
-  mappings_iterate(
-      parsed_mappings, 
-      libjvm_filter, 
-      libjvm_callback, 
-      &(OBTAIN_SIGNATURE(method_holder))
-  );
-  FOUND_AT_NON_NULL_ASSERT(method_holder);
+  //mappings_iterate(
+  //    parsed_mappings, 
+  //    libjvm_filter, 
+  //    libjvm_callback, 
+  //    &(OBTAIN_SIGNATURE(method_holder))
+  //);
+  //FOUND_AT_NON_NULL_ASSERT(method_holder);
 
-  logger_log(__func__, "size_of_parameters found at %p", OBTAIN_SIGNATURE(size_of_parameters).found_at);
-  logger_log(__func__, "interpreter_entry_for_kind found at %p", OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at);
-  logger_log(__func__, "java_thread_current found at %p", OBTAIN_SIGNATURE(java_thread_current).found_at);
-  logger_log(__func__, "method_holder found at %p", OBTAIN_SIGNATURE(method_holder).found_at);
+  //logger_log(__func__, "size_of_parameters found at %p", OBTAIN_SIGNATURE(size_of_parameters).found_at);
+  //logger_log(__func__, "interpreter_entry_for_kind found at %p", OBTAIN_SIGNATURE(interpreter_entry_for_kind).found_at);
+  //logger_log(__func__, "java_thread_current found at %p", OBTAIN_SIGNATURE(java_thread_current).found_at);
+  //logger_log(__func__, "method_holder found at %p", OBTAIN_SIGNATURE(method_holder).found_at);
   resolve_functions();
-  mappings_free(parsed_mappings);
+  //mappings_free(parsed_mappings);
   return true; 
 }
 
