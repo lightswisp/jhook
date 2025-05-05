@@ -11,22 +11,7 @@
  * |  0. You just DO WHAT THE FUCK YOU WANT TO.                           |
  * +----------------------------------------------------------------------+
  */
-#include <stdlib.h>
-#include <dlfcn.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <pthread.h>
-#include <string.h>
-#include <stdbool.h>
-#include <jni.h>
-#include <jvmti.h>
-
-//#include "helpers.h"
-//#include "hooks.h"
-//#include "tempfile.h"
-//#include "logger.h"
 #include "jhook.h"
 
 void      *__main_thread(void *a);
