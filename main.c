@@ -23,23 +23,19 @@
 #include <jni.h>
 #include <jvmti.h>
 
-#include "helpers.h"
-#include "hooks.h"
-#include "tempfile.h"
-#include "logger.h"
-
-/* jvm globals */
-static JavaVM   *g_jvm;
-static jvmtiEnv *g_jvmti;
-static JNIEnv   *g_env;
+//#include "helpers.h"
+//#include "hooks.h"
+//#include "tempfile.h"
+//#include "logger.h"
+#include "jhook.h"
 
 void      *__main_thread(void *a);
 pthread_t g_thread;
 
 /* run this function on library load */
 __attribute__((constructor)) void __library_startup(){
-  logger_log(__func__, "injected !");
-  logger_log(__func__, "now trying to create new thread");
+  jhook_logger_log(__func__, "injected !");
+  jhook_logger_log(__func__, "now trying to create new thread");
   pthread_attr_t attr;
 
   /* start thread detached */
@@ -112,48 +108,22 @@ void* __main_thread(void *a)
     }
   };
 
-  if(!init_libjvm())
-    goto end;
+  if(!jhook_init(JVMTI_VERSION_1_2)){
+    jhook_logger_fatal(__func__, "failed to initialize jhook");
+    return NULL;
+  }
 
-  if(!get_java_vms(&g_jvm))             
-    goto end;
-
-  if(!attach_current_thread(g_jvm, (void**)&g_env, NULL)) 
-    goto end;
-
-  if(!get_jvmti(g_jvm, &g_jvmti))
-    goto end;
-
-  if(!resolve_original_methods(g_env, hooks, ARR_LENGTH(hooks)))
-    goto end;
-
-  if(!suspend_all_threads(g_env, g_jvmti))
-    goto end;
-
-  if(!tempfile_create())
-    goto end;
-
-  if(!tempfile_generate_java_code(g_jvmti, hooks, ARR_LENGTH(hooks)))
-    goto end;
-
-  jclass class_hk = create_class(g_env, tempfile_get_class_name(), tempfile_get_path());
-
-  if(!resolve_hook_methods(g_env, class_hk, hooks, ARR_LENGTH(hooks)))
-   goto end; 
-
-  if(!register_hook_methods(g_env, class_hk, hooks, ARR_LENGTH(hooks)))
-    goto end;
+  if(!jhook_register(hooks, ARR_LENGTH(hooks))){
+    jhook_logger_fatal(__func__, "failed to register hooks");
+    return NULL;
+  }
 
   SET_HOOK(readLine, hooks[0].method_id_orig, hooks[0].method_id_hook);
-  resume_all_threads(g_env, g_jvmti);
-end:
-  tempfile_remove();
-  resume_all_threads(g_env, g_jvmti);
   return NULL;
 }
 
 __attribute__((destructor)) void __library_shutdown(){
-  logger_log(__func__, "unloading");
-  //REMOVE_HOOK(readLine);
+  jhook_logger_log(__func__, "unloading");
+  REMOVE_HOOK(readLine);
   //if(g_jvm != NULL) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
