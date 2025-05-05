@@ -1,8 +1,8 @@
 CC=gcc
 INCLUDES=-I/usr/lib/jvm/default-runtime/include/linux -I/usr/lib/jvm/default-runtime/include
 LIBS=-lpthread -ldl 
-CFLAGS=-Wall -shared -ggdb -O0
-SOURCES=main.c hooks.c dump.c helpers.c logger.c sigscan.c mappings.c tempfile.c
+CFLAGS=-Wall -Wextra -pedantic -Werror -shared -ggdb -O0
+SOURCES=main.c 
 OUT=lib2inject.so
 OBJS=$(SOURCES:.c=.o)
 EXEC=@bash -c
