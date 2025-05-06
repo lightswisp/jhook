@@ -28,16 +28,18 @@ Define your hooks in a native way. This is where we will land after java calls t
 HOOK_INIT(readLine);
 HOOK_ENTRY(readLine);
 JNIEXPORT jstring JNICALL readLine_hk(JNIEnv* env, jobject this) {
+    jobject r;
+    const char *r_s;
 
-    REMOVE_HOOK(readLine);
     // call the original and save its result
-    jobject r = (*env)->CallObjectMethod(env, this, GET_HOOK_NAME_BY_IDX(readLine));
-    _SET_HOOK(readLine);
+    CALL_ORIGINAL(readLine, {
+      r = (*env)->CallObjectMethod(env, this, GET_HOOK_NAME_BY_IDX(readLine));
+    });
 
     if(r == NULL) return r;
 
-    const char *r_s = (*env)->GetStringUTFChars(env, r, 0);
-    printf("INTERCEPTED: %s\n", r_s);
+    r_s = (*env)->GetStringUTFChars(env, r, 0);
+    jhook_logger_log(__func__,"readLine: %s", r_s);
     return r;
 }
 ```

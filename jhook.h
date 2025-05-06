@@ -101,6 +101,12 @@ typedef struct {
   _SET_HOOK(x);                                                       \
 } while(0)
 
+#define CALL_ORIGINAL(x, code) do{\
+  REMOVE_HOOK(x);                 \
+  code;                           \
+  _SET_HOOK(x);                   \
+} while(0)
+
 #define GET_HOOK_NAME_BY_IDX(x) (g_target_mid_##x)
 #define GET_CLASS_NAME_BY_IDX(x) (g_clazz_##x)
 

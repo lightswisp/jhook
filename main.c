@@ -37,23 +37,29 @@ __attribute__((constructor)) void __library_startup(){
 HOOK_INIT(readLine);
 HOOK_ENTRY(readLine);
 JNIEXPORT jstring JNICALL readLine_hk(JNIEnv* env, jobject this) {
+    jobject r;
+    const char *r_s;
 
-    REMOVE_HOOK(readLine);
-    jobject r = (*env)->CallObjectMethod(env, this, GET_HOOK_NAME_BY_IDX(readLine));
-    _SET_HOOK(readLine);
+    CALL_ORIGINAL(readLine, {
+      r = (*env)->CallObjectMethod(env, this, GET_HOOK_NAME_BY_IDX(readLine));
+    });
 
     if(r == NULL) return r;
 
-    const char *r_s = (*env)->GetStringUTFChars(env, r, 0);
-    printf("INTERCEPTED: %s\n", r_s);
+    r_s = (*env)->GetStringUTFChars(env, r, 0);
+    jhook_logger_log(__func__,"readLine: %s", r_s);
     return r;
 }
 
 HOOK_INIT(println);
 HOOK_ENTRY(println);
 JNIEXPORT void JNICALL println_hk(JNIEnv *env, jobject this, jstring string){
-  printf("println was called!\n");
-  return;
+  const char *r_s = (*env)->GetStringUTFChars(env, string, 0);
+  jhook_logger_log(__func__,"println: %s", r_s);
+
+  CALL_ORIGINAL(println, {
+    (*env)->CallVoidMethod(env, this, GET_HOOK_NAME_BY_IDX(println), string);
+  });
 }
 
 /* our main loop */
@@ -104,11 +110,12 @@ void* __main_thread(void *a)
   }
 
   SET_HOOK(readLine, hooks[0].method_id_orig, hooks[0].method_id_hook);
+  SET_HOOK(println, hooks[1].method_id_orig, hooks[1].method_id_hook);
   return NULL;
 }
 
 __attribute__((destructor)) void __library_shutdown(){
   jhook_logger_log(__func__, "unloading");
-  REMOVE_HOOK(readLine);
+  //REMOVE_HOOK(readLine);
   //if(g_jvm != NULL) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
