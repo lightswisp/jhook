@@ -48,7 +48,7 @@ typedef struct {
 #define TEMPLATE PATH BASE_NAME SUFFIX
 
 /* logger */
-#define LOG_MAX_BUFFER_SIZE 1024
+#define LOG_MAX_BUFFER_SIZE      1024
 #define LOG_MAX_TIME_BUFFER_SIZE 128
 #define COLOR_START(x) "\e["x"m"
 #define COLOR_END      "\e[0m"
@@ -69,45 +69,45 @@ typedef struct {
 #define POP(reg) __asm__ volatile("pop %"reg)
 
 #define HOOK_ENTRY(x) \
-  __attribute__((noreturn)) void hook_entry_##x(){\
-  /* switching method */                          \
-  __asm__ volatile(                               \
-      "mov %[hook_method], %%rbx"                 \
-      :: [hook_method] "m" (g_hook_method_##x)    \
-  );                                              \
-  POP("rbp");                                     \
-  /* jumping to the native interpreter */         \
-  __asm__ volatile(                               \
-    "jmpq *%[addr]"                               \
-    :: [addr] "m" (g_hook_interpreter_##x)        \
-  );                                              \
-  while(1);                                       \
+  __attribute__((noreturn)) void hook_entry_##x(){  \
+  /* switching method */                            \
+  __asm__ volatile(                                 \
+      "mov %[hook_method], %%rbx"                   \
+      :: [hook_method] "m" (g_hook_method_##x)      \
+  );                                                \
+  POP("rbp");                                       \
+  /* jumping to the native interpreter */           \
+  __asm__ volatile(                                 \
+    "jmpq *%[addr]"                                 \
+    :: [addr] "m" (g_hook_interpreter_##x)          \
+  );                                                \
+  while(1);                                         \
 }
 
-#define REMOVE_HOOK(x) do{                                                    \
-  if(g_initialized_##x)                                                       \
+#define REMOVE_HOOK(x) do{                                                          \
+  if(g_initialized_##x)                                                             \
     jhook_remove_hook(g_target_mid_##x, g_orig_i2i_entry_##x, g_orig_fi_entry_##x); \
 } while(0)
 
-#define _SET_HOOK(x) do{ \
+#define _SET_HOOK(x) do{                                                                                    \
   jhook_set_hook(g_target_mid_##x, (uint64_t*)hook_entry_##x, &g_orig_i2i_entry_##x, &g_orig_fi_entry_##x); \
 } while(0)
 
-#define SET_HOOK(x, orig, hook) do{                                   \
-  g_initialized_##x = true;                                           \
-  g_target_mid_##x  = orig;                                           \
+#define SET_HOOK(x, orig, hook) do{                                         \
+  g_initialized_##x = true;                                                 \
+  g_target_mid_##x  = orig;                                                 \
   g_hook_method_##x = jhook_resolve_jmethod_id(hook);                       \
   g_hook_interpreter_##x = jhook_method_interpreter_get(g_hook_method_##x); \
-  _SET_HOOK(x);                                                       \
+  _SET_HOOK(x);                                                             \
 } while(0)
 
-#define CALL_ORIGINAL(x, code) do{\
-  REMOVE_HOOK(x);                 \
-  code;                           \
-  _SET_HOOK(x);                   \
+#define CALL_ORIGINAL(x, code) do{  \
+  REMOVE_HOOK(x);                   \
+  code;                             \
+  _SET_HOOK(x);                     \
 } while(0)
 
-#define GET_HOOK_NAME_BY_IDX(x) (g_target_mid_##x)
+#define GET_HOOK_NAME_BY_IDX(x)  (g_target_mid_##x)
 #define GET_CLASS_NAME_BY_IDX(x) (g_clazz_##x)
 
 /* offsets */ 
@@ -121,9 +121,9 @@ JNIEnv   *g_env;
 bool      g_ath_are_suspended = false;
 
 /* tempfile globals */
-int  g_tempfile_fd = -1;
-char g_tempfile_class_name[12];
-char g_tempfile_path[] = TEMPLATE;
+int  g_tempfile_fd             = -1;
+char g_tempfile_class_name[12] = { 0 };
+char g_tempfile_path[]         = TEMPLATE;
 
 JHOOK void         jhook_logger_log  (const char *func, const char *fmt, ...);
 JHOOK void         jhook_logger_warn (const char *func, const char *fmt, ...);
@@ -151,6 +151,9 @@ JHOOK bool         jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *ho
 JHOOK uint8_t*     jhook_method_interpreter_get(__Method method);
 JHOOK bool         jhook_init(int jvmti_version);
 JHOOK bool         jhook_register(hook_t *hooks, size_t size);
+
+
+/* implementation */
 
 JHOOK bool jhook_init(int jvmti_version){
   if(!jhook_get_java_vms(&g_jvm)) 
@@ -212,7 +215,7 @@ JHOOK void jhook_set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2
 }
 
 JHOOK void jhook_remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi){
-  __Method method        = jhook_resolve_jmethod_id(mid);
+  __Method method      = jhook_resolve_jmethod_id(mid);
   uint64_t **i2i_entry = (uint64_t**)(method + i2i_entry_off);
   uint64_t **fi_entry  = (uint64_t**)(method + fi_entry_off);
 
@@ -236,7 +239,7 @@ JHOOK bool jhook_attach_current_thread(JavaVM *vm, void **penv, void *args){
 
 JHOOK bool jhook_get_java_vms(JavaVM **vm){
 	jsize jvm_count;
-	if(JNI_GetCreatedJavaVMs(vm, 1, &jvm_count) != JNI_OK) {
+	if(JNI_GetCreatedJavaVMs(vm, 1, &jvm_count) != JNI_OK){
     jhook_logger_fatal(__func__, "failed to get jvms");
 		return false;
 	}
@@ -324,37 +327,37 @@ JHOOK bool jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti){
 JHOOK jclass jhook_create_class(JNIEnv *env, const char *class_name, const char *src_path){
   /* classes */
 #define SAFE_RETURN(x) if(!x) return NULL
-  jclass string_class        = jhook_find_class(env, "java/lang/String");         SAFE_RETURN(string_class);
-  jclass file_class          = jhook_find_class(env, "java/io/File");             SAFE_RETURN(file_class);
-  jclass url_class           = jhook_find_class(env, "java/net/URL");             SAFE_RETURN(url_class);
-  jclass tool_provider_class = jhook_find_class(env, "javax/tools/ToolProvider"); SAFE_RETURN(tool_provider_class);
-  jclass compiler_class      = jhook_find_class(env, "javax/tools/JavaCompiler"); SAFE_RETURN(compiler_class);
-  jclass loader_class        = jhook_find_class(env, "java/net/URLClassLoader");  SAFE_RETURN(loader_class);
+  jclass string_class          = jhook_find_class(env, "java/lang/String");         SAFE_RETURN(string_class);
+  jclass file_class            = jhook_find_class(env, "java/io/File");             SAFE_RETURN(file_class);
+  jclass url_class             = jhook_find_class(env, "java/net/URL");             SAFE_RETURN(url_class);
+  jclass tool_provider_class   = jhook_find_class(env, "javax/tools/ToolProvider"); SAFE_RETURN(tool_provider_class);
+  jclass compiler_class        = jhook_find_class(env, "javax/tools/JavaCompiler"); SAFE_RETURN(compiler_class);
+  jclass loader_class          = jhook_find_class(env, "java/net/URLClassLoader");  SAFE_RETURN(loader_class);
 
   /* methods */
-#define SAFE_RETURN2(x) do{                               \
-  if(!x){                                                 \
+#define SAFE_RETURN2(x) do{                                     \
+  if(!x){                                                       \
     jhook_logger_fatal(__func__, "failed to get method for"#x); \
-    return NULL;                                          \
+    return NULL;                                                \
   }                                                       \
 }while(0)
-  jmethodID file_constructor  = (*env)->GetMethodID(env, file_class, "<init>", "(Ljava/lang/String;)V"); 
+  jmethodID file_constructor   = (*env)->GetMethodID(env, file_class, "<init>", "(Ljava/lang/String;)V");
   SAFE_RETURN2(file_constructor);
-  jmethodID get_compiler_m    = (*env)->GetStaticMethodID(env, tool_provider_class, "getSystemJavaCompiler", "()Ljavax/tools/JavaCompiler;"); 
+  jmethodID get_compiler_m     = (*env)->GetStaticMethodID(env, tool_provider_class, "getSystemJavaCompiler", "()Ljavax/tools/JavaCompiler;");
   SAFE_RETURN2(get_compiler_m);
-  jmethodID compiler_run      = (*env)->GetMethodID(env, compiler_class, "run", "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;[Ljava/lang/String;)I");
+  jmethodID compiler_run       = (*env)->GetMethodID(env, compiler_class, "run", "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;[Ljava/lang/String;)I");
   SAFE_RETURN2(compiler_run);
-  jmethodID get_parent_file_m = (*env)->GetMethodID(env, file_class, "getParentFile", "()Ljava/io/File;");
+  jmethodID get_parent_file_m  = (*env)->GetMethodID(env, file_class, "getParentFile", "()Ljava/io/File;");
   SAFE_RETURN2(get_parent_file_m);
-  jmethodID to_uri            = (*env)->GetMethodID(env, file_class, "toURI", "()Ljava/net/URI;");
+  jmethodID to_uri             = (*env)->GetMethodID(env, file_class, "toURI", "()Ljava/net/URI;");
   SAFE_RETURN2(to_uri);
 
   /* vars */
-  jstring path_str         = (*env)->NewStringUTF(env, src_path);
-  jobject source_file      = (*env)->NewObject(env, file_class, file_constructor, path_str);
-  jobjectArray args_arr    = (*env)->NewObjectArray(env, 1, string_class, NULL);
-  jobject parent_directory = (*env)->CallObjectMethod(env, source_file, get_parent_file_m);
-  jobject compiler         = (*env)->CallStaticObjectMethod(env, tool_provider_class, get_compiler_m);
+  jstring path_str             = (*env)->NewStringUTF(env, src_path);
+  jobject source_file          = (*env)->NewObject(env, file_class, file_constructor, path_str);
+  jobjectArray args_arr        = (*env)->NewObjectArray(env, 1, string_class, NULL);
+  jobject parent_directory     = (*env)->CallObjectMethod(env, source_file, get_parent_file_m);
+  jobject compiler             = (*env)->CallStaticObjectMethod(env, tool_provider_class, get_compiler_m);
   
   // compiler.run 
   (*env)->SetObjectArrayElement(env, args_arr, 0, path_str);
@@ -371,10 +374,10 @@ JHOOK jclass jhook_create_class(JNIEnv *env, const char *class_name, const char 
   SAFE_RETURN2(loader_constructor);
   jobject class_loader         = (*env)->CallStaticObjectMethod(env, loader_class, loader_constructor, url_array);
   
-  jmethodID load_class   = (*env)->GetMethodID(env, loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+  jmethodID load_class         = (*env)->GetMethodID(env, loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
   SAFE_RETURN2(load_class);
-  jstring class_name_str = (*env)->NewStringUTF(env, class_name);
-  jclass loaded_class    = (*env)->CallObjectMethod(env, class_loader, load_class, class_name_str);
+  jstring class_name_str       = (*env)->NewStringUTF(env, class_name);
+  jclass loaded_class          = (*env)->CallObjectMethod(env, class_loader, load_class, class_name_str);
 
   return loaded_class;
 }
@@ -499,6 +502,7 @@ JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, siz
    */
 
   /* compute the size */
+  bool r = false;
   char *source_code;
   size_t file_size = 0;
   file_size += sizeof("public class ");
@@ -511,7 +515,7 @@ JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, siz
   source_code = malloc(file_size);
   if(source_code == NULL){
     jhook_logger_fatal(__func__, "malloc failed");
-    return false;
+    goto end;
   }
 
   /* append to the source code */
@@ -526,10 +530,12 @@ JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, siz
   /* now write it to the file */
   if(write(g_tempfile_fd, source_code, strlen(source_code)) == -1){
     jhook_logger_fatal(__func__, "failed to write to the temp file");
-    return false;
+    goto end;
   } 
+  r = true;
+end:
   free(source_code);
-  return true;
+  return r;
 }
 
 JHOOK void jhook_logger_log(const char *func, const char *fmt, ...){
