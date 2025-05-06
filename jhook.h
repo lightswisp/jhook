@@ -118,6 +118,7 @@ typedef struct {
 JavaVM   *g_jvm;
 jvmtiEnv *g_jvmti;
 JNIEnv   *g_env;
+bool      g_ath_are_suspended = false;
 
 /* tempfile globals */
 int  g_tempfile_fd = -1;
@@ -271,6 +272,8 @@ JHOOK bool jhook_suspend_all_threads(JNIEnv *env, jvmtiEnv *jvmti){
   jthread *threads;
   jint threads_length;
 
+  if(g_ath_are_suspended) return true;
+
   if((*jvmti)->GetCurrentThread(jvmti, &current) != JVMTI_ERROR_NONE){
     jhook_logger_fatal(__func__, "failed to get current thread");
     return false;
@@ -286,6 +289,7 @@ JHOOK bool jhook_suspend_all_threads(JNIEnv *env, jvmtiEnv *jvmti){
     (*jvmti)->SuspendThread(jvmti, threads[i]);  
   }
 
+  g_ath_are_suspended = true;
   jhook_logger_log(__func__, "all threads are suspended");
   return true;
 }
@@ -294,6 +298,8 @@ JHOOK bool jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti){
   jthread current;
   jthread *threads;
   jint threads_length;
+
+  if(!g_ath_are_suspended) return true;
 
   if((*jvmti)->GetCurrentThread(jvmti, &current) != JVMTI_ERROR_NONE){
     jhook_logger_fatal(__func__, "failed to get current thread");
@@ -310,6 +316,7 @@ JHOOK bool jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti){
     (*jvmti)->ResumeThread(jvmti, threads[i]);  
   }
 
+  g_ath_are_suspended = false;
   jhook_logger_log(__func__, "all threads are resumed");
   return true;
 }
