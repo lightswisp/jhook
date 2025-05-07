@@ -139,6 +139,7 @@ JHOOK bool         jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti);
 JHOOK jclass       jhook_create_class(JNIEnv *env, const char *class_name, const char *src_path);
 JHOOK jclass       jhook_find_class(JNIEnv *env, const char *class_name);
 JHOOK jmethodID    jhook_find_method(JNIEnv *env, const char *class_name, const char* method_name, const char *method_signature, bool is_static);
+JHOOK jmethodID    jhook_find_method2(JNIEnv *env, jclass clazz, const char* method_name, const char *method_signature, bool is_static);
 JHOOK bool         jhook_resolve_original_methods(JNIEnv *env, hook_t *hooks, size_t size);
 JHOOK bool         jhook_resolve_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size);
 JHOOK bool         jhook_register_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size);
@@ -393,6 +394,22 @@ JHOOK jclass jhook_find_class(JNIEnv *env, const char *class_name){
   return tmp_class;
 }
 
+JHOOK jmethodID jhook_find_method2(JNIEnv *env, jclass clazz, const char* method_name, const char *method_signature, bool is_static){
+  jmethodID t_method;
+
+  if(is_static)
+    t_method = (*env)->GetStaticMethodID(env, clazz, method_name, method_signature);
+  else
+    t_method = (*env)->GetMethodID(env, clazz, method_name, method_signature);
+
+  if(t_method == NULL){
+    jhook_logger_fatal(__func__, "failed to get <%s> method id", method_name);
+    return NULL;
+  }
+
+  return t_method;
+}
+
 JHOOK jmethodID jhook_find_method(JNIEnv *env, const char *class_name, const char* method_name, const char *method_signature, bool is_static){
   jclass t_class;
   jmethodID t_method;
@@ -430,7 +447,7 @@ JHOOK bool jhook_resolve_original_methods(JNIEnv *env, hook_t *hooks, size_t siz
 
 JHOOK bool jhook_resolve_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size){
   for(size_t i = 0; i < size; i++){
-    jmethodID method_id = (*env)->GetMethodID(env, clazz, hooks[i].method_name, hooks[i].method_sig);
+    jmethodID method_id = jhook_find_method2(env, clazz, hooks[i].method_name, hooks[i].method_sig, hooks[i].method_is_static); 
     if(method_id == NULL){
       jhook_logger_fatal(__func__, "failed to resolve %s", hooks[i].method_name);
       return false;
