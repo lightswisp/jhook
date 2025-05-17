@@ -16,7 +16,6 @@
 #include <jni.h>
 #include <time.h>
 #include <jvmti.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <libgen.h>
@@ -26,8 +25,6 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <linux/limits.h>
-#include <sys/stat.h>
-
 
 /* typedefs */
 typedef uint64_t* __Method;
@@ -114,6 +111,14 @@ typedef struct {
 #define GET_HOOK_NAME_BY_IDX(x)  (g_target_mid_##x)
 #define GET_CLASS_NAME_BY_IDX(x) (g_clazz_##x)
 
+#define SAFE_RETURN(x, type, code) do{                             \
+  code                                                             \
+  if(!x){                                                          \
+    jhook_logger_fatal(__func__, "failed to get " type " for"#x);  \
+    return NULL;                                                   \
+  }                                                                \
+}while(0)
+
 /* offsets */ 
 #define fi_entry_off   0x0000000d
 #define i2i_entry_off  0x0000000a
@@ -137,6 +142,7 @@ JHOOK __Method     jhook_resolve_jmethod_id(jmethodID mid);
 JHOOK bool         jhook_attach_current_thread(JavaVM *vm, void **penv, void *args);
 JHOOK bool         jhook_get_java_vms(JavaVM **vm);
 JHOOK bool         jhook_get_jvmti(JavaVM *vm, jvmtiEnv **jvmti, int jvmti_version);
+JHOOK char*        jhook_get_class_path(JNIEnv *env, jclass clazz, const char *class_name);
 JHOOK bool         jhook_suspend_all_threads(JNIEnv *env, jvmtiEnv *jvmti);
 JHOOK bool         jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti);
 JHOOK jclass       jhook_create_class(JNIEnv *env, const char *class_name, const char *src_path);
@@ -150,6 +156,7 @@ JHOOK int          jhook_strpos(const char *heystack, const char *needle);
 JHOOK bool         jhook_tempfile_create(void);
 JHOOK void         jhook_tempfile_remove(void);
 JHOOK char*        jhook_tempfile_get_path(void);
+JHOOK bool         jhook_tempfile_copy_original_classes(JNIEnv *env, hook_t *hooks, size_t size);
 JHOOK char*        jhook_tempfile_get_class_name(void);
 JHOOK bool         jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size);
 JHOOK uint8_t*     jhook_method_interpreter_get(__Method method);
@@ -175,6 +182,8 @@ JHOOK bool jhook_register(hook_t *hooks, size_t size, JNIEnv *env, jvmtiEnv *jvm
   if(!jhook_suspend_all_threads(env, jvmti))
     goto end;
   if(!jhook_tempfile_create())
+    goto end;
+  if(!jhook_tempfile_copy_original_classes(env, hooks, size))
     goto end;
   if(!jhook_tempfile_generate_java_code(jvmti, hooks, size))
     goto end;
@@ -328,38 +337,51 @@ JHOOK bool jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti){
 
 JHOOK jclass jhook_create_class(JNIEnv *env, const char *class_name, const char *src_path){
   /* classes */
-#define SAFE_RETURN(x) if(!x) return NULL
-  jclass string_class          = jhook_find_class(env, "java/lang/String");         SAFE_RETURN(string_class);
-  jclass file_class            = jhook_find_class(env, "java/io/File");             SAFE_RETURN(file_class);
-  jclass url_class             = jhook_find_class(env, "java/net/URL");             SAFE_RETURN(url_class);
-  jclass tool_provider_class   = jhook_find_class(env, "javax/tools/ToolProvider"); SAFE_RETURN(tool_provider_class);
-  jclass compiler_class        = jhook_find_class(env, "javax/tools/JavaCompiler"); SAFE_RETURN(compiler_class);
-  jclass loader_class          = jhook_find_class(env, "java/net/URLClassLoader");  SAFE_RETURN(loader_class);
-
+  jclass string_class, file_class, url_class, tool_provider_class, compiler_class, loader_class; 
   /* methods */
-#define SAFE_RETURN2(x) do{                                     \
-  if(!x){                                                       \
-    jhook_logger_fatal(__func__, "failed to get method for"#x); \
-    return NULL;                                                \
-  }                                                             \
-}while(0)
-  jmethodID file_constructor   = (*env)->GetMethodID(env, file_class, "<init>", "(Ljava/lang/String;)V");
-  SAFE_RETURN2(file_constructor);
-  jmethodID get_compiler_m     = (*env)->GetStaticMethodID(env, tool_provider_class, "getSystemJavaCompiler", "()Ljavax/tools/JavaCompiler;");
-  SAFE_RETURN2(get_compiler_m);
-  jmethodID compiler_run       = (*env)->GetMethodID(env, compiler_class, "run", "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;[Ljava/lang/String;)I");
-  SAFE_RETURN2(compiler_run);
-  jmethodID get_parent_file_m  = (*env)->GetMethodID(env, file_class, "getParentFile", "()Ljava/io/File;");
-  SAFE_RETURN2(get_parent_file_m);
-  jmethodID to_uri             = (*env)->GetMethodID(env, file_class, "toURI", "()Ljava/net/URI;");
-  SAFE_RETURN2(to_uri);
+  jmethodID file_constructor, get_compiler, compiler_run, get_parent_file, to_uri, to_url, loader_constructor, load_class; 
+
+  SAFE_RETURN(string_class, "class", {
+    string_class = jhook_find_class(env, "java/lang/String");         
+  });
+  SAFE_RETURN(file_class, "class", {
+    file_class = jhook_find_class(env, "java/io/File");             
+  });
+  SAFE_RETURN(url_class, "class", {
+    url_class = jhook_find_class(env, "java/net/URL");             
+  });
+  SAFE_RETURN(tool_provider_class, "class", {
+    tool_provider_class = jhook_find_class(env, "javax/tools/ToolProvider"); 
+  });
+  SAFE_RETURN(compiler_class, "class", {
+    compiler_class = jhook_find_class(env, "javax/tools/JavaCompiler"); 
+  });
+  SAFE_RETURN(loader_class, "class", {
+    loader_class = jhook_find_class(env, "java/net/URLClassLoader");  
+  });
+
+  SAFE_RETURN(file_constructor, "method", {
+    file_constructor = (*env)->GetMethodID(env, file_class, "<init>", "(Ljava/lang/String;)V");
+  });
+  SAFE_RETURN(get_compiler, "method", {
+    get_compiler = (*env)->GetStaticMethodID(env, tool_provider_class, "getSystemJavaCompiler", "()Ljavax/tools/JavaCompiler;");
+  });
+  SAFE_RETURN(compiler_run, "method", {
+    compiler_run = (*env)->GetMethodID(env, compiler_class, "run", "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;[Ljava/lang/String;)I");
+  });
+  SAFE_RETURN(get_parent_file, "method", {
+    get_parent_file = (*env)->GetMethodID(env, file_class, "getParentFile", "()Ljava/io/File;");
+  });
+  SAFE_RETURN(to_uri, "method", {
+    to_uri = (*env)->GetMethodID(env, file_class, "toURI", "()Ljava/net/URI;");
+  });
 
   /* vars */
   jstring path_str             = (*env)->NewStringUTF(env, src_path);
   jobject source_file          = (*env)->NewObject(env, file_class, file_constructor, path_str);
   jobjectArray args_arr        = (*env)->NewObjectArray(env, 1, string_class, NULL);
-  jobject parent_directory     = (*env)->CallObjectMethod(env, source_file, get_parent_file_m);
-  jobject compiler             = (*env)->CallStaticObjectMethod(env, tool_provider_class, get_compiler_m);
+  jobject parent_directory     = (*env)->CallObjectMethod(env, source_file, get_parent_file);
+  jobject compiler             = (*env)->CallStaticObjectMethod(env, tool_provider_class, get_compiler);
   
   // compiler.run 
   (*env)->SetObjectArrayElement(env, args_arr, 0, path_str);
@@ -367,17 +389,19 @@ JHOOK jclass jhook_create_class(JNIEnv *env, const char *class_name, const char 
 
   jobject uri                  = (*env)->CallObjectMethod(env, parent_directory, to_uri);
   jclass uri_class             = (*env)->GetObjectClass(env, uri);
-  jmethodID to_url             = (*env)->GetMethodID(env, uri_class, "toURL", "()Ljava/net/URL;");
-  SAFE_RETURN2(to_url);
+  SAFE_RETURN(to_url, "method", {
+    to_url = (*env)->GetMethodID(env, uri_class, "toURL", "()Ljava/net/URL;");
+  });
   jobject url                  = (*env)->CallObjectMethod(env, uri, to_url);
   jobjectArray url_array       = (*env)->NewObjectArray(env, 1, url_class, url);
-  jmethodID loader_constructor = (*env)->GetStaticMethodID(env, loader_class, "newInstance",
-      "([Ljava/net/URL;)Ljava/net/URLClassLoader;");
-  SAFE_RETURN2(loader_constructor);
+  SAFE_RETURN(loader_constructor, "method", {
+    loader_constructor = (*env)->GetStaticMethodID(env, loader_class, "newInstance", "([Ljava/net/URL;)Ljava/net/URLClassLoader;");
+  });
   jobject class_loader         = (*env)->CallStaticObjectMethod(env, loader_class, loader_constructor, url_array);
   
-  jmethodID load_class         = (*env)->GetMethodID(env, loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-  SAFE_RETURN2(load_class);
+  SAFE_RETURN(load_class, "method", {
+    load_class = (*env)->GetMethodID(env, loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+  });
   jstring class_name_str       = (*env)->NewStringUTF(env, class_name);
   jclass loaded_class          = (*env)->CallObjectMethod(env, class_loader, load_class, class_name_str);
 
@@ -456,6 +480,58 @@ JHOOK bool jhook_resolve_original_methods(JNIEnv *env, jvmtiEnv *jvmti, hook_t *
   return true;
 }
 
+JHOOK char* jhook_get_class_path(JNIEnv *env, jclass clazz, const char *class_name){
+  jclass clazz_class, pd_class, cs_class, url_class;
+  jmethodID get_pd, get_cs, get_location, get_file;
+
+  SAFE_RETURN(clazz_class, "class", {
+    clazz_class = (*env)->FindClass(env, "java/lang/Class");                
+  });
+
+  SAFE_RETURN(pd_class  , "class", {
+    pd_class = (*env)->FindClass(env, "java/security/ProtectionDomain"); 
+  });
+
+  SAFE_RETURN(cs_class  , "class", {
+    cs_class = (*env)->FindClass(env, "java/security/CodeSource");       
+  });
+
+  SAFE_RETURN(url_class , "class", {
+    url_class = (*env)->FindClass(env, "java/net/URL");                   
+  });
+
+  SAFE_RETURN(get_pd, "method", {
+    get_pd = (*env)->GetMethodID(env, clazz_class, "getProtectionDomain", "()Ljava/security/ProtectionDomain;");
+  });
+  jobject pd = (*env)->CallObjectMethod(env, clazz, get_pd);
+  
+  SAFE_RETURN(get_cs, "method", {
+    get_cs = (*env)->GetMethodID(env, pd_class, "getCodeSource", "()Ljava/security/CodeSource;");
+  });
+  jobject cs = (*env)->CallObjectMethod(env, pd, get_cs);
+  
+  SAFE_RETURN(get_location, "method", {
+    get_location = (*env)->GetMethodID(env, cs_class, "getLocation", "()Ljava/net/URL;");
+  });
+  jobject url = (*env)->CallObjectMethod(env, cs, get_location);
+  
+  SAFE_RETURN(get_file, "method", {
+    get_file = (*env)->GetMethodID(env, url_class, "getFile", "()Ljava/lang/String;");
+  });
+  jstring file_path = (jstring)(*env)->CallObjectMethod(env, url, get_file);
+
+  const char *temp_path = (*env)->GetStringUTFChars(env, file_path, NULL);
+  char *path            = malloc(PATH_MAX);
+  if(path == NULL){
+    jhook_logger_fatal(__func__, "failed to allocate memory"); 
+    goto end;
+  }
+  snprintf(path, PATH_MAX, "%s/%s.class", temp_path, class_name);
+end:
+  (*env)->ReleaseStringUTFChars(env, file_path, temp_path);
+  return path;
+}
+
 JHOOK bool jhook_resolve_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size){
   for(size_t i = 0; i < size; i++){
     jmethodID method_id = jhook_find_method2(env, clazz, hooks[i].native_detour[0].name, hooks[i].native_detour[0].signature, hooks[i].method_is_static); 
@@ -488,6 +564,59 @@ JHOOK int jhook_strpos(const char *heystack, const char *needle){
     return found_at - heystack;
   }
   return -1;
+}
+
+JHOOK bool jhook_tempfile_copy_original_classes(JNIEnv *env, hook_t *hooks, size_t size){
+#define MAX_READ 4096
+  bool r = false;
+  char *path_from = NULL;
+  char path_to[PATH_MAX]; 
+  FILE *fd_from, *fd_to;
+  size_t bytes_read;
+  char buffer[MAX_READ];
+
+  for(size_t i = 0; i < size; i++){
+    jclass clazz = jhook_find_class(env, hooks[i].class_name);
+
+    if(clazz == NULL){
+      jhook_logger_fatal(__func__, "failed to obtain class %s", hooks[i].class_name);
+      goto end;
+    }
+    
+    if( (path_from = jhook_get_class_path(env, clazz, hooks[i].class_name)) == NULL ){
+      jhook_logger_fatal(__func__, "failed to get class path for %s", hooks[i].class_name);
+      goto end;
+    }
+
+    snprintf(path_to, PATH_MAX, "%s/%s.class",  PATH, hooks[i].class_name);
+    fd_from = fopen(path_from, "rb");
+    fd_to   = fopen(path_to, "wb");
+
+    if(fd_from == NULL){
+      jhook_logger_fatal(__func__, "failed to open %s", path_from);
+      goto end;
+    }
+    if(fd_to == NULL){
+      jhook_logger_fatal(__func__, "failed to open %s", path_to);
+      goto end;
+    }
+
+    while ((bytes_read = fread(buffer, 1, MAX_READ, fd_from)) != 0) {
+      if(fwrite(buffer, 1, bytes_read, fd_to) != bytes_read) {
+        jhook_logger_fatal(__func__, "write failed");
+        goto end; 
+      }
+    }
+    fclose(fd_to);
+    fclose(fd_from);
+    free(path_from);
+  }
+  r = true;
+end:
+  fclose(fd_to);
+  fclose(fd_from);
+  free(path_from);
+  return r;
 }
 
 JHOOK bool jhook_tempfile_create(void){
