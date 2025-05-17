@@ -16,6 +16,7 @@
 #include <jni.h>
 #include <time.h>
 #include <jvmti.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <libgen.h>
@@ -24,6 +25,9 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <linux/limits.h>
+#include <sys/stat.h>
+
 
 /* typedefs */
 typedef uint64_t* __Method;
@@ -93,10 +97,10 @@ typedef struct {
   jhook_set_hook(g_target_mid_##x, (uint64_t*)hook_entry_##x, &g_orig_i2i_entry_##x, &g_orig_fi_entry_##x); \
 } while(0)
 
-#define SET_HOOK(x, orig, hook) do{                                         \
+#define SET_HOOK(x, hook) do{                                               \
   g_initialized_##x = true;                                                 \
-  g_target_mid_##x  = orig;                                                 \
-  g_hook_method_##x = jhook_resolve_jmethod_id(hook);                       \
+  g_target_mid_##x  = hook.method_id_orig;                                  \
+  g_hook_method_##x = jhook_resolve_jmethod_id(hook.method_id_hook);        \
   g_hook_interpreter_##x = jhook_method_interpreter_get(g_hook_method_##x); \
   _SET_HOOK(x);                                                             \
 } while(0)
@@ -114,17 +118,16 @@ typedef struct {
 #define fi_entry_off   0x0000000d
 #define i2i_entry_off  0x0000000a
 
-/* jvm globals */
-JavaVM   *g_jvm;
-jvmtiEnv *g_jvmti;
-JNIEnv   *g_env;
-bool      g_ath_are_suspended = false;
+/* threads */
+bool g_ath_are_suspended = false;
 
 /* tempfile globals */
 int  g_tempfile_fd             = -1;
 char g_tempfile_class_name[12] = { 0 };
 char g_tempfile_path[]         = TEMPLATE;
 
+JHOOK bool         jhook_init(int jvmti_version, JavaVM **jvm, JNIEnv **env, jvmtiEnv **jvmti);
+JHOOK bool         jhook_register(hook_t *hooks, size_t size, JNIEnv *env, jvmtiEnv *jvmti);
 JHOOK void         jhook_logger_log  (const char *func, const char *fmt, ...);
 JHOOK void         jhook_logger_warn (const char *func, const char *fmt, ...);
 JHOOK void         jhook_logger_fatal(const char *func, const char *fmt, ...);
@@ -140,7 +143,7 @@ JHOOK jclass       jhook_create_class(JNIEnv *env, const char *class_name, const
 JHOOK jclass       jhook_find_class(JNIEnv *env, const char *class_name);
 JHOOK jmethodID    jhook_find_method(JNIEnv *env, const char *class_name, const char* method_name, const char *method_signature, bool is_static);
 JHOOK jmethodID    jhook_find_method2(JNIEnv *env, jclass clazz, const char* method_name, const char *method_signature, bool is_static);
-JHOOK bool         jhook_resolve_original_methods(JNIEnv *env, hook_t *hooks, size_t size);
+JHOOK bool         jhook_resolve_original_methods(JNIEnv *env, jvmtiEnv *jvmti, hook_t *hooks, size_t size);
 JHOOK bool         jhook_resolve_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size);
 JHOOK bool         jhook_register_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size);
 JHOOK int          jhook_strpos(const char *heystack, const char *needle);
@@ -150,46 +153,44 @@ JHOOK char*        jhook_tempfile_get_path(void);
 JHOOK char*        jhook_tempfile_get_class_name(void);
 JHOOK bool         jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size);
 JHOOK uint8_t*     jhook_method_interpreter_get(__Method method);
-JHOOK bool         jhook_init(int jvmti_version);
-JHOOK bool         jhook_register(hook_t *hooks, size_t size);
 
 
 /* implementation */
 
-JHOOK bool jhook_init(int jvmti_version){
-  if(!jhook_get_java_vms(&g_jvm)) 
+JHOOK bool jhook_init(int jvmti_version, JavaVM **jvm, JNIEnv **env, jvmtiEnv **jvmti){
+  if(!jhook_get_java_vms(jvm)) 
     return false;
-  if(!jhook_attach_current_thread(g_jvm, (void**)&g_env, NULL)) 
+  if(!jhook_attach_current_thread(*jvm, (void**)env, NULL)) 
     return false;
-  if(!jhook_get_jvmti(g_jvm, &g_jvmti, jvmti_version)) 
+  if(!jhook_get_jvmti(*jvm, jvmti, jvmti_version)) 
     return false;
 
   return true;
 }
 
-JHOOK bool jhook_register(hook_t *hooks, size_t size){
+JHOOK bool jhook_register(hook_t *hooks, size_t size, JNIEnv *env, jvmtiEnv *jvmti){
   bool r = false;
-  if(!jhook_resolve_original_methods(g_env, hooks, size))
+  if(!jhook_resolve_original_methods(env, jvmti, hooks, size))
     goto end;
-  if(!jhook_suspend_all_threads(g_env, g_jvmti))
+  if(!jhook_suspend_all_threads(env, jvmti))
     goto end;
   if(!jhook_tempfile_create())
     goto end;
-  if(!jhook_tempfile_generate_java_code(g_jvmti, hooks, size))
+  if(!jhook_tempfile_generate_java_code(jvmti, hooks, size))
     goto end;
 
-  jclass class_hk = jhook_create_class(g_env, jhook_tempfile_get_class_name(), jhook_tempfile_get_path());
+  jclass class_hk = jhook_create_class(env, jhook_tempfile_get_class_name(), jhook_tempfile_get_path());
   if(class_hk == NULL)
     goto end;
-  if(!jhook_resolve_hook_methods(g_env, class_hk, hooks, size))
+  if(!jhook_resolve_hook_methods(env, class_hk, hooks, size))
    goto end; 
-  if(!jhook_register_hook_methods(g_env, class_hk, hooks, size))
+  if(!jhook_register_hook_methods(env, class_hk, hooks, size))
     goto end;
 
   r = true;
 end:  
   jhook_tempfile_remove();
-  jhook_resume_all_threads(g_env, g_jvmti);
+  jhook_resume_all_threads(env, jvmti);
   return r;
 }
 
@@ -340,7 +341,7 @@ JHOOK jclass jhook_create_class(JNIEnv *env, const char *class_name, const char 
   if(!x){                                                       \
     jhook_logger_fatal(__func__, "failed to get method for"#x); \
     return NULL;                                                \
-  }                                                       \
+  }                                                             \
 }while(0)
   jmethodID file_constructor   = (*env)->GetMethodID(env, file_class, "<init>", "(Ljava/lang/String;)V");
   SAFE_RETURN2(file_constructor);
@@ -433,13 +434,23 @@ JHOOK jmethodID jhook_find_method(JNIEnv *env, const char *class_name, const cha
   return t_method;
 }
 
-JHOOK bool jhook_resolve_original_methods(JNIEnv *env, hook_t *hooks, size_t size){
+JHOOK bool jhook_resolve_original_methods(JNIEnv *env, jvmtiEnv *jvmti, hook_t *hooks, size_t size){
+  jboolean is_native;
   for(size_t i = 0; i < size; i++){
     jmethodID method_id = jhook_find_method(env, hooks[i].class_name, hooks[i].method_name, hooks[i].method_sig, hooks[i].method_is_static); 
     if(method_id == NULL){
       jhook_logger_fatal(__func__, "failed to resolve %s", hooks[i].method_name);
       return false;
     }
+    if((*jvmti)->IsMethodNative(jvmti, method_id, &is_native) != JVMTI_ERROR_NONE){
+      jhook_logger_fatal(__func__, "failed to detect if method %s is native", hooks[i].method_name); 
+      return false;
+    }
+    if(is_native){
+      jhook_logger_warn(__func__, "not yet implemented! method %s is native", hooks[i].method_name);
+      return false;
+    }
+    
     hooks[i].method_id_orig = method_id;
   }
   return true;
@@ -447,7 +458,7 @@ JHOOK bool jhook_resolve_original_methods(JNIEnv *env, hook_t *hooks, size_t siz
 
 JHOOK bool jhook_resolve_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks, size_t size){
   for(size_t i = 0; i < size; i++){
-    jmethodID method_id = jhook_find_method2(env, clazz, hooks[i].method_name, hooks[i].method_sig, hooks[i].method_is_static); 
+    jmethodID method_id = jhook_find_method2(env, clazz, hooks[i].native_detour[0].name, hooks[i].native_detour[0].signature, hooks[i].method_is_static); 
     if(method_id == NULL){
       jhook_logger_fatal(__func__, "failed to resolve %s", hooks[i].method_name);
       return false;
