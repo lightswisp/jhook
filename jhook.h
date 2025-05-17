@@ -27,12 +27,13 @@
 #include <linux/limits.h>
 
 /* typedefs */
+#define HOOK_CHAR_BUFF_LIMIT 2048
 typedef uint64_t* __Method;
 typedef struct {
-  char class_name[4096];
-  char method_name[4096];
-  char method_sig[4096];
-  char method_java_name[4096];
+  char class_name      [HOOK_CHAR_BUFF_LIMIT];
+  char method_name     [HOOK_CHAR_BUFF_LIMIT];
+  char method_sig      [HOOK_CHAR_BUFF_LIMIT];
+  char method_java_name[HOOK_CHAR_BUFF_LIMIT];
   bool method_is_static;
   jmethodID method_id_orig;
   jmethodID method_id_hook;
