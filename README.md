@@ -74,7 +74,7 @@ if(!jhook_register(hooks, ARR_LENGTH(hooks))){
 ```
 Finally call "SET_HOOK" for each individual method: 
 ```c
-SET_HOOK(readLine, hooks[0].method_id_orig, hooks[0].method_id_hook);
+SET_HOOK(readLine, hooks[0]);
 ```
 If you want to unset it:
 ```c
