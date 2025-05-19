@@ -27,8 +27,16 @@
 #include <linux/limits.h>
 
 /* typedefs */
-#define HOOK_CHAR_BUFF_LIMIT 2048
-typedef uint64_t* __Method;
+#define ARR_LENGTH(x)            (sizeof(x)/sizeof(x[0]))
+#define HOOK_CHAR_BUFF_LIMIT     256
+#define CLASS_DEPENDENCIES_LIMIT 5
+typedef uintptr_t* __Method;
+
+typedef struct {
+  size_t size;
+  char name[CLASS_DEPENDENCIES_LIMIT][HOOK_CHAR_BUFF_LIMIT];
+} deps_t;
+
 typedef struct {
   char class_name      [HOOK_CHAR_BUFF_LIMIT];
   char method_name     [HOOK_CHAR_BUFF_LIMIT];
@@ -38,10 +46,22 @@ typedef struct {
   jmethodID method_id_orig;
   jmethodID method_id_hook;
   JNINativeMethod native_detour[1];
+  deps_t dependencies;
 } hook_t;
 
+typedef struct {
+  bool initialized; 
+  jclass clazz;
+  jmethodID target_mid;
+  uintptr_t *orig_i2i_entry;
+  uintptr_t *orig_fi_entry;
+  uintptr_t *orig_fc_entry;
+  uintptr_t *hook_method;
+  uintptr_t *hook_interpreter;
+  uintptr_t *hook_compiled;
+} hook_info_t;
+
 #define JHOOK extern
-#define ARR_LENGTH(x) (sizeof(x)/sizeof(x[0]))
 
 /* tempfile */
 #define PATH      "/tmp/"
@@ -60,47 +80,64 @@ typedef struct {
 
 /* hooks */
 #define HOOK_INIT(x) \
-  static bool           g_initialized_##x      = false; \
-  static jclass         g_clazz_##x            = NULL;  \
-  static jmethodID      g_target_mid_##x       = NULL;  \
-  static uint64_t      *g_orig_i2i_entry_##x   = NULL;  \
-  static uint64_t      *g_orig_fi_entry_##x    = NULL;  \
-  static uint64_t      *g_hook_method_##x      = NULL;  \
-  static uint8_t       *g_hook_interpreter_##x = NULL;  \
+  static hook_info_t hook_info_##x = { \
+    false,                             \
+    NULL,                              \
+    NULL,                              \
+    NULL,                              \
+    NULL,                              \
+    NULL,                              \
+    NULL,                              \
+    NULL,                              \
+    NULL                               \
+  };                                   \
 
 #define POP(reg) __asm__ volatile("pop %"reg)
 
 #define HOOK_ENTRY(x) \
-  __attribute__((noreturn)) void hook_entry_##x(){  \
-  /* switching method */                            \
-  __asm__ volatile(                                 \
-      "mov %[hook_method], %%rbx"                   \
-      :: [hook_method] "m" (g_hook_method_##x)      \
-  );                                                \
-  POP("rbp");                                       \
-  /* jumping to the native interpreter */           \
-  __asm__ volatile(                                 \
-    "jmpq *%[addr]"                                 \
-    :: [addr] "m" (g_hook_interpreter_##x)          \
-  );                                                \
-  while(1);                                         \
+  __attribute__((noreturn)) void hook_entry_##x(){     \
+  /* switching method */                               \
+  __asm__ volatile(                                    \
+      "mov %[hook_method], %%rbx"                      \
+      :: [hook_method] "m" (hook_info_##x.hook_method) \
+  );                                                   \
+  POP("rbp");                                          \
+  /* jumping to the native interpreter */              \
+  __asm__ volatile(                                    \
+    "jmpq *%[addr]"                                    \
+    :: [addr] "m" (hook_info_##x.hook_interpreter)     \
+  );                                                   \
+  while(1);                                            \
 }
 
-#define REMOVE_HOOK(x) do{                                                          \
-  if(g_initialized_##x)                                                             \
-    jhook_remove_hook(g_target_mid_##x, g_orig_i2i_entry_##x, g_orig_fi_entry_##x); \
+#define REMOVE_HOOK(x) do{              \
+  if(hook_info_##x.initialized)         \
+    jhook_remove_hook(                  \
+        hook_info_##x.target_mid,       \
+        hook_info_##x.orig_i2i_entry,   \
+        hook_info_##x.orig_fi_entry,    \
+        hook_info_##x.orig_fc_entry     \
+    );                                  \
 } while(0)
 
-#define _SET_HOOK(x) do{                                                                                    \
-  jhook_set_hook(g_target_mid_##x, (uint64_t*)hook_entry_##x, &g_orig_i2i_entry_##x, &g_orig_fi_entry_##x); \
+#define _SET_HOOK(x) do{             \
+  jhook_set_hook(                    \
+      hook_info_##x.target_mid,      \
+      (uintptr_t*)hook_entry_##x,    \
+      hook_info_##x.hook_compiled,   \
+      &hook_info_##x.orig_i2i_entry, \
+      &hook_info_##x.orig_fi_entry,  \
+      &hook_info_##x.orig_fc_entry   \
+  );                                 \
 } while(0)
 
-#define SET_HOOK(x, hook) do{                                               \
-  g_initialized_##x = true;                                                 \
-  g_target_mid_##x  = hook.method_id_orig;                                  \
-  g_hook_method_##x = jhook_resolve_jmethod_id(hook.method_id_hook);        \
-  g_hook_interpreter_##x = jhook_method_interpreter_get(g_hook_method_##x); \
-  _SET_HOOK(x);                                                             \
+#define SET_HOOK(x, hook) do{                                                               \
+  hook_info_##x.initialized      = true;                                                    \
+  hook_info_##x.target_mid       = hook.method_id_orig;                                     \
+  hook_info_##x.hook_method      = jhook_resolve_jmethod_id(hook.method_id_hook);           \
+  hook_info_##x.hook_interpreter = jhook_method_interpreter_get(hook_info_##x.hook_method); \
+  hook_info_##x.hook_compiled    = jhook_method_from_compiled(hook_info_##x.hook_method);   \
+  _SET_HOOK(x);                                                                             \
 } while(0)
 
 #define CALL_ORIGINAL(x, code) do{  \
@@ -109,8 +146,8 @@ typedef struct {
   _SET_HOOK(x);                     \
 } while(0)
 
-#define GET_HOOK_NAME_BY_IDX(x)  (g_target_mid_##x)
-#define GET_CLASS_NAME_BY_IDX(x) (g_clazz_##x)
+#define GET_HOOK_NAME_BY_IDX(x)  (hook_info_##x.target_mid)
+#define GET_CLASS_NAME_BY_IDX(x) (hook_info_##x.clazz)
 
 #define SAFE_RETURN(x, type, code) do{                             \
   code                                                             \
@@ -121,8 +158,10 @@ typedef struct {
 }while(0)
 
 /* offsets */ 
-#define fi_entry_off   0x0000000d
-#define i2i_entry_off  0x0000000a
+#define fi_entry_off    0x0000000d
+#define i2i_entry_off   0x0000000a
+#define fc_entry_off    0x0000000b
+#define flags_entry_off 0x00000007
 
 /* threads */
 bool g_ath_are_suspended = false;
@@ -137,13 +176,15 @@ JHOOK bool         jhook_register(hook_t *hooks, size_t size, JNIEnv *env, jvmti
 JHOOK void         jhook_logger_log  (const char *func, const char *fmt, ...);
 JHOOK void         jhook_logger_warn (const char *func, const char *fmt, ...);
 JHOOK void         jhook_logger_fatal(const char *func, const char *fmt, ...);
-JHOOK void         jhook_set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2i, uint64_t **orig_fi);
-JHOOK void         jhook_remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi);
+JHOOK void         jhook_set_hook(jmethodID mid, uintptr_t *hook_addr_interpreted, uintptr_t *hook_addr_compiled, uintptr_t **orig_i2i, uintptr_t **orig_fi, uintptr_t **orig_fc);
+JHOOK void         jhook_remove_hook(jmethodID mid, uintptr_t *orig_i2i, uintptr_t *orig_fi, uintptr_t *orig_fc);
 JHOOK __Method     jhook_resolve_jmethod_id(jmethodID mid);
+JHOOK bool         jhook_resolve_class_dependencies(JNIEnv *env, hook_t *hooks, size_t size);
 JHOOK bool         jhook_attach_current_thread(JavaVM *vm, void **penv, void *args);
 JHOOK bool         jhook_get_java_vms(JavaVM **vm);
 JHOOK bool         jhook_get_jvmti(JavaVM *vm, jvmtiEnv **jvmti, int jvmti_version);
 JHOOK char*        jhook_get_class_path(JNIEnv *env, jclass clazz, const char *class_name);
+JHOOK void         jhook_set_original_noinline_flags(JNIEnv *env, jvmtiEnv *jvmti, hook_t *hooks, size_t size);
 JHOOK bool         jhook_suspend_all_threads(JNIEnv *env, jvmtiEnv *jvmti);
 JHOOK bool         jhook_resume_all_threads(JNIEnv *env, jvmtiEnv *jvmti);
 JHOOK jclass       jhook_create_class(JNIEnv *env, const char *class_name, const char *src_path);
@@ -157,10 +198,10 @@ JHOOK int          jhook_strpos(const char *heystack, const char *needle);
 JHOOK bool         jhook_tempfile_create(void);
 JHOOK void         jhook_tempfile_remove(void);
 JHOOK char*        jhook_tempfile_get_path(void);
-JHOOK bool         jhook_tempfile_copy_original_classes(JNIEnv *env, hook_t *hooks, size_t size);
 JHOOK char*        jhook_tempfile_get_class_name(void);
 JHOOK bool         jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size);
-JHOOK uint8_t*     jhook_method_interpreter_get(__Method method);
+JHOOK uintptr_t*    jhook_method_interpreter_get(__Method method);
+JHOOK uintptr_t*    jhook_method_from_compiled(__Method method);
 
 
 /* implementation */
@@ -177,14 +218,14 @@ JHOOK bool jhook_init(int jvmti_version, JavaVM **jvm, JNIEnv **env, jvmtiEnv **
 }
 
 JHOOK bool jhook_register(hook_t *hooks, size_t size, JNIEnv *env, jvmtiEnv *jvmti){
-  bool r = false;
+  bool status = false;
   if(!jhook_resolve_original_methods(env, jvmti, hooks, size))
     goto end;
   if(!jhook_suspend_all_threads(env, jvmti))
     goto end;
   if(!jhook_tempfile_create())
     goto end;
-  if(!jhook_tempfile_copy_original_classes(env, hooks, size))
+  if(!jhook_resolve_class_dependencies(env, hooks, size))
     goto end;
   if(!jhook_tempfile_generate_java_code(jvmti, hooks, size))
     goto end;
@@ -197,43 +238,65 @@ JHOOK bool jhook_register(hook_t *hooks, size_t size, JNIEnv *env, jvmtiEnv *jvm
   if(!jhook_register_hook_methods(env, class_hk, hooks, size))
     goto end;
 
-  r = true;
+  jhook_set_original_noinline_flags(env, jvmti, hooks, size);
+  status = true;
 end:  
   jhook_tempfile_remove();
   jhook_resume_all_threads(env, jvmti);
-  return r;
+  return status;
 }
 
-JHOOK void jhook_set_hook(jmethodID mid, uint64_t *hook_addr, uint64_t **orig_i2i, uint64_t **orig_fi){
+JHOOK void jhook_set_hook(jmethodID mid, uintptr_t *hook_addr_interpreted, uintptr_t *hook_addr_compiled, uintptr_t **orig_i2i, uintptr_t **orig_fi, uintptr_t **orig_fc){
   // TODO: check if method is native
   __Method method     = jhook_resolve_jmethod_id(mid);
   /* in order to unhook this method 
    * we need to save these two entries somewhere
    * and then assign them back accordingly
    */
-  uint64_t **i2i_entry = (uint64_t**)(method + i2i_entry_off);
-  uint64_t **fi_entry  = (uint64_t**)(method + fi_entry_off);
+  uintptr_t **i2i_entry = (uintptr_t**)(method + i2i_entry_off);
+  uintptr_t **fi_entry  = (uintptr_t**)(method + fi_entry_off);
+  uintptr_t **fc_entry  = (uintptr_t**)(method + fc_entry_off);
 
-  jhook_logger_log(__func__,"i2i @ %p", i2i_entry);
-  jhook_logger_log(__func__,"fi @ %p", fi_entry);
+  jhook_logger_log(__func__,"Method @ %p", method);
+  jhook_logger_log(__func__,"i2i @ %p -> %p",  *i2i_entry, hook_addr_interpreted);
+  jhook_logger_log(__func__,"fi  @ %p -> %p",  *fi_entry,  hook_addr_interpreted);
+  jhook_logger_log(__func__,"fc  @ %p -> %p",  *fc_entry,  hook_addr_compiled);
 
   // save
   *orig_i2i = *i2i_entry; 
   *orig_fi  = *fi_entry;
+  *orig_fc  = *fc_entry;
 
   // rewrite
-  *i2i_entry     = hook_addr;
-  *fi_entry      = hook_addr;
+  *i2i_entry     = hook_addr_interpreted;
+  *fi_entry      = hook_addr_interpreted;
+  *fc_entry      = hook_addr_compiled;
 }
 
-JHOOK void jhook_remove_hook(jmethodID mid, uint64_t *orig_i2i, uint64_t *orig_fi){
+JHOOK void jhook_set_flags(jmethodID mid, int flags){
+  __Method method = jhook_resolve_jmethod_id(mid);
+  *(uint16_t*)(method+flags_entry_off) |= flags;
+}
+
+JHOOK void jhook_set_original_noinline_flags(JNIEnv *env, jvmtiEnv *jvmti, hook_t *hooks, size_t size){
+  for(size_t i = 0; i < size; i++){
+    jmethodID method = hooks[i].method_id_orig;
+    jclass    clazz  = jhook_find_class(env, hooks[i].class_name);
+    (*jvmti)->RetransformClasses(jvmti, 1, &clazz);
+    jhook_set_flags(method, ((1 << 12) | (1 << 8) | (1 << 9) | (1 << 10)));
+  }
+}
+
+JHOOK void jhook_remove_hook(jmethodID mid, uintptr_t *orig_i2i, uintptr_t *orig_fi, uintptr_t *orig_fc){
   __Method method      = jhook_resolve_jmethod_id(mid);
-  uint64_t **i2i_entry = (uint64_t**)(method + i2i_entry_off);
-  uint64_t **fi_entry  = (uint64_t**)(method + fi_entry_off);
+  uintptr_t **i2i_entry = (uintptr_t**)(method + i2i_entry_off);
+  uintptr_t **fi_entry  = (uintptr_t**)(method + fi_entry_off);
+  uintptr_t **fc_entry  = (uintptr_t**)(method + fc_entry_off);
 
   // restore
   *i2i_entry     = orig_i2i;
   *fi_entry      = orig_fi;
+  *fc_entry      = orig_fc;
 }
 
 JHOOK __Method jhook_resolve_jmethod_id(jmethodID mid){
@@ -273,7 +336,10 @@ JHOOK bool jhook_get_jvmti(JavaVM *vm, jvmtiEnv **jvmti, int jvmti_version){
 		return false;
   }
 
-  caps.can_suspend = true;
+  caps.can_suspend               = true;
+  caps.can_retransform_classes   = true;
+  caps.can_retransform_any_class = true;
+
   if((**jvmti)->AddCapabilities(*jvmti, &caps) != JVMTI_ERROR_NONE){
     jhook_logger_fatal(__func__, "failed to set capabilities");
 		return false;
@@ -555,8 +621,12 @@ JHOOK bool jhook_register_hook_methods(JNIEnv *env, jclass clazz, hook_t *hooks,
   return true;
 }
 
-JHOOK uint8_t* jhook_method_interpreter_get(__Method method){
-  return (uint8_t*)*(uint64_t**)(method + i2i_entry_off); 
+JHOOK uintptr_t* jhook_method_interpreter_get(__Method method){
+  return *(uintptr_t**)(method + i2i_entry_off); 
+}
+
+JHOOK uintptr_t* jhook_method_from_compiled(__Method method){
+  return *(uintptr_t**)(method + fc_entry_off); 
 }
 
 JHOOK int jhook_strpos(const char *heystack, const char *needle){
@@ -567,9 +637,9 @@ JHOOK int jhook_strpos(const char *heystack, const char *needle){
   return -1;
 }
 
-JHOOK bool jhook_tempfile_copy_original_classes(JNIEnv *env, hook_t *hooks, size_t size){
+JHOOK bool jhook_resolve_class_dependencies(JNIEnv *env, hook_t *hooks, size_t size){
 #define MAX_READ 4096
-  bool r = false;
+  bool status = false;
   char *path_from = NULL;
   char path_to[PATH_MAX]; 
   FILE *fd_from, *fd_to;
@@ -577,47 +647,50 @@ JHOOK bool jhook_tempfile_copy_original_classes(JNIEnv *env, hook_t *hooks, size
   char buffer[MAX_READ];
 
   for(size_t i = 0; i < size; i++){
-    jclass clazz = jhook_find_class(env, hooks[i].class_name);
+    if(hooks[i].dependencies.size == 0) continue;
+    for(size_t j = 0; j < hooks[i].dependencies.size; j++){
+      jclass clazz = jhook_find_class(env, hooks[i].dependencies.name[j]);
 
-    if(clazz == NULL){
-      jhook_logger_fatal(__func__, "failed to obtain class %s", hooks[i].class_name);
-      goto end;
-    }
-    
-    if( (path_from = jhook_get_class_path(env, clazz, hooks[i].class_name)) == NULL ){
-      jhook_logger_fatal(__func__, "failed to get class path for %s", hooks[i].class_name);
-      goto end;
-    }
-
-    snprintf(path_to, PATH_MAX, "%s/%s.class",  PATH, hooks[i].class_name);
-    fd_from = fopen(path_from, "rb");
-    fd_to   = fopen(path_to, "wb");
-
-    if(fd_from == NULL){
-      jhook_logger_fatal(__func__, "failed to open %s", path_from);
-      goto end;
-    }
-    if(fd_to == NULL){
-      jhook_logger_fatal(__func__, "failed to open %s", path_to);
-      goto end;
-    }
-
-    while ((bytes_read = fread(buffer, 1, MAX_READ, fd_from)) != 0) {
-      if(fwrite(buffer, 1, bytes_read, fd_to) != bytes_read) {
-        jhook_logger_fatal(__func__, "write failed");
-        goto end; 
+      if(clazz == NULL){
+        jhook_logger_fatal(__func__, "failed to obtain class %s", hooks[i].dependencies.name[j]);
+        goto end;
       }
+      
+      if( (path_from = jhook_get_class_path(env, clazz, hooks[i].dependencies.name[j])) == NULL ){
+        jhook_logger_fatal(__func__, "failed to get class path for %s", hooks[i].dependencies.name[j]);
+        goto end;
+      }
+
+      snprintf(path_to, PATH_MAX, "%s/%s.class",  PATH, hooks[i].dependencies.name[j]);
+      fd_from = fopen(path_from, "rb");
+      fd_to   = fopen(path_to, "wb");
+
+      if(fd_from == NULL){
+        jhook_logger_fatal(__func__, "failed to open %s", path_from);
+        goto end;
+      }
+      if(fd_to == NULL){
+        jhook_logger_fatal(__func__, "failed to open %s", path_to);
+        goto end;
+      }
+
+      while ((bytes_read = fread(buffer, 1, MAX_READ, fd_from)) != 0) {
+        if(fwrite(buffer, 1, bytes_read, fd_to) != bytes_read) {
+          jhook_logger_fatal(__func__, "write failed");
+          goto end; 
+        }
+      }
+      fclose(fd_to);   fd_to     = NULL;
+      fclose(fd_from); fd_from   = NULL;
+      free(path_from);    path_from = NULL;
     }
-    fclose(fd_to);
-    fclose(fd_from);
-    free(path_from);
   }
-  r = true;
+  status = true;
 end:
-  fclose(fd_to);
-  fclose(fd_from);
+  if(fd_to     != NULL) fclose(fd_to);
+  if(fd_from   != NULL) fclose(fd_from);
   free(path_from);
-  return r;
+  return status;
 }
 
 JHOOK bool jhook_tempfile_create(void){
@@ -660,7 +733,7 @@ JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, siz
    */
 
   /* compute the size */
-  bool r = false;
+  bool status = false;
   char *source_code;
   size_t file_size = 0;
   file_size += sizeof("public class ");
@@ -690,10 +763,10 @@ JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, siz
     jhook_logger_fatal(__func__, "failed to write to the temp file");
     goto end;
   } 
-  r = true;
+  status = true;
 end:
   free(source_code);
-  return r;
+  return status;
 }
 
 JHOOK void jhook_logger_log(const char *func, const char *fmt, ...){
