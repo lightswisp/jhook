@@ -158,9 +158,9 @@ typedef struct {
 }while(0)
 
 /* offsets */ 
-#define fi_entry_off    0x0000000d
-#define i2i_entry_off   0x0000000a
 #define fc_entry_off    0x0000000b
+#define i2i_entry_off   0x0000000a
+#define fi_entry_off    0x0000000d
 #define flags_entry_off 0x00000007
 
 /* threads */
