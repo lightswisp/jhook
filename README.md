@@ -7,7 +7,7 @@ https://github.com/user-attachments/assets/bd073edf-46cc-4923-8ca8-a4f95d1fe720
 ## how does it work?
 It works by replacing the original method’s `_i2i_entry` field with our 'bridge' function, which eventually leads to the native code. This bridge is created when defining `HOOK_ENTRY`. When execution lands inside it, the original `Method*` is located in the rbx register. If we replace it with our own `Method*`, the call will then be forwarded to our native function.
 
-It is also important to jump to the native interpreter entry afterward, because our method is native and uses a different interpreter. To create such `Method`, we can either call JVM internal functions directly by their addresses or use JNI/JVMTI to assist us. The second option is preferable, as it delegates all the hussle to the JVM.
+It is also important to jump to the native interpreter entry afterward, because our method is native and uses a different interpreter. To create such `Method`, we can either call JVM internal functions directly by their addresses or use JNI/JVMTI to assist us. The second option is preferable, as it delegates all the hassle to the JVM.
 
 This library actually uses the second option by generating Java code and compiling it using JNI. We then load the class and register all methods so that they point to our native code.
 
