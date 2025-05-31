@@ -350,11 +350,11 @@ JHOOK bool jhook_attach_current_thread(JavaVM *vm, void **penv, void *args){
 }
 
 JHOOK bool jhook_get_java_vms(JavaVM **vm){
-	jsize jvm_count;
-	if(JNI_GetCreatedJavaVMs(vm, 1, &jvm_count) != JNI_OK){
+  jsize jvm_count;
+  if(JNI_GetCreatedJavaVMs(vm, 1, &jvm_count) != JNI_OK){
     jhook_logger_fatal(__func__, "failed to get jvms");
-		return false;
-	}
+    return false;
+  }
 
   jhook_logger_log(__func__,"jvm @ %p", *vm);
   return true;
@@ -890,7 +890,6 @@ end:
 }
 
 JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size){
-  asm("int3");
 #define SAFE_WRITE(fd, buf, n) do {                           \
   if(write(fd, buf, n) == -1){                                \
     jhook_logger_fatal(__func__, "failed to write " #buf);    \
