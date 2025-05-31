@@ -50,7 +50,6 @@ hook_t hooks[] = {
     "java/io/BufferedReader", 
     "readLine", 
     "()Ljava/lang/String;", 
-    "public native java.lang.String readLine();",
     false,
     NULL,
     NULL,
