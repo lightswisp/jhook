@@ -30,7 +30,43 @@
 #define ARR_LENGTH(x)            (sizeof(x)/sizeof(x[0]))
 #define HOOK_CHAR_BUFF_LIMIT     256
 #define CLASS_DEPENDENCIES_LIMIT 5
+#define PARAMS_BUFF_LIMIT        2048
+#define RETURN_TYPE_BUFF_LIMIT   2048
+
 typedef uintptr_t* __Method;
+
+typedef enum {
+  JAVA_UNKNOWN = 0,
+  JAVA_BOOL,
+  JAVA_BYTE,
+  JAVA_CHAR,
+  JAVA_SHORT,
+  JAVA_INT,
+  JAVA_LONG,
+  JAVA_FLOAT,
+  JAVA_DOUBLE,
+  JAVA_VOID,
+  JAVA_OBJECT,
+  JAVA_ARRAY
+} datatype_t;
+
+typedef struct {
+  char p[PARAMS_BUFF_LIMIT];
+  char r[RETURN_TYPE_BUFF_LIMIT];
+} java_descriptor_t;
+
+const char* datatypes[] = {
+  "unknown",
+  "Boolean",
+  "byte",
+  "char",
+  "short",
+  "int",
+  "long",
+  "float",
+  "double",
+  "void"
+};
 
 typedef struct {
   size_t size;
@@ -41,7 +77,6 @@ typedef struct {
   char class_name      [HOOK_CHAR_BUFF_LIMIT];
   char method_name     [HOOK_CHAR_BUFF_LIMIT];
   char method_sig      [HOOK_CHAR_BUFF_LIMIT];
-  char method_java_name[HOOK_CHAR_BUFF_LIMIT];
   bool method_is_static;
   jmethodID method_id_orig;
   jmethodID method_id_hook;
@@ -199,9 +234,11 @@ JHOOK bool         jhook_tempfile_create(void);
 JHOOK void         jhook_tempfile_remove(void);
 JHOOK char*        jhook_tempfile_get_path(void);
 JHOOK char*        jhook_tempfile_get_class_name(void);
+JHOOK datatype_t   jhook_demangler_get_type(char t);
+JHOOK char*        jhook_demangler_demangle(char *p, char *r, char *f, bool is_static);
 JHOOK bool         jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size);
-JHOOK uintptr_t*    jhook_method_interpreter_get(__Method method);
-JHOOK uintptr_t*    jhook_method_from_compiled(__Method method);
+JHOOK uintptr_t*   jhook_method_interpreter_get(__Method method);
+JHOOK uintptr_t*   jhook_method_from_compiled(__Method method);
 
 
 /* implementation */
@@ -726,46 +763,178 @@ JHOOK void jhook_tempfile_remove(void){
   jhook_logger_log(__func__, "removed temp file @ %s", g_tempfile_path); 
 }
 
-JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size){
-  /* 
-   * TODO:
-   * add automatic name demangler for methods that are contained inside hooks struct
-   */
+JHOOK datatype_t jhook_demangler_get_type(char t){
+  switch (t) {
+    case '[':
+      /* array */
+      return JAVA_ARRAY;
+      break;
+    case 'L':
+      /* object */
+      return JAVA_OBJECT;
+      break;
+    case 'V':
+      /* void */
+      return JAVA_VOID;
+      break;
+    case 'D':
+      /* double */
+      return JAVA_DOUBLE;
+      break;
+    case 'F':
+      /* float */
+      return JAVA_FLOAT;
+      break;
+    case 'J':
+      /* long */
+      return JAVA_LONG;
+      break;
+    case 'I':
+      /* int */
+      return JAVA_INT;
+      break;
+    case 'S':
+      /* short */
+      return JAVA_SHORT;
+      break;
+    case 'C':
+      /* char */
+      return JAVA_CHAR;
+      break;
+    case 'B':
+      /* byte */
+      return JAVA_BYTE;
+      break;
+    case 'Z':
+      /* Boolean */
+      return JAVA_BOOL;
+      break;
 
-  /* compute the size */
-  bool status = false;
-  char *source_code;
-  size_t file_size = 0;
-  file_size += sizeof("public class ");
-  file_size += sizeof(BASE_NAME);
-  file_size += sizeof(" {\n");
-  for(size_t i = 0; i < size; i++)
-    file_size += strlen(hooks[i].method_java_name) + sizeof('\n');
-
-  file_size += sizeof("}\n");
-  source_code = malloc(file_size);
-  if(source_code == NULL){
-    jhook_logger_fatal(__func__, "malloc failed");
-    goto end;
   }
+  return JAVA_UNKNOWN;
+}
+
+JHOOK char* jhook_demangler_demangle(char *p, char *r, char *f, bool is_static){
+  size_t r_array_iters = 0;
+  datatype_t r_type = jhook_demangler_get_type(*(r++));
+  if(r_type == JAVA_UNKNOWN) /* unknown type */ return NULL;
+
+  char *b = calloc(4096, sizeof(char));
+  strcat(b, "public ");
+  strcat(b, "native ");
+  if(is_static) strcat(b, "static ");
+
+  /* return type parsing */
+  while(r_type == JAVA_ARRAY){
+    /* we can have more then one level of array depth */
+    r_array_iters++;
+    r_type = jhook_demangler_get_type(*(r++));
+  }
+  if(r_type == JAVA_OBJECT){
+    char *t = strtok(r, "/");
+    while(t != NULL){
+      strcat(b, t);
+      if(strchr(t, ';') == NULL) strcat(b, ".");
+      t = strtok(NULL, "/");
+    }
+    b[strlen(b) - 1] = 0;
+  }
+  else
+    strcat(b, datatypes[r_type]);
+
+  while(r_array_iters-->0) strcat(b, "[]");
+  strcat(b, " ");
+  strcat(b, f);
+  strcat(b, "(");
+
+  /* arguments parsing */
+  if(*p == 0) goto end;
+
+  size_t p_array_iters = 0;
+  char c_p_name        = 'a';
+  datatype_t p_type = jhook_demangler_get_type(*(p++));
+
+  while(p_type != JAVA_UNKNOWN){
+    while(p_type == JAVA_ARRAY){
+      /* we can have more then one level of array depth */
+      p_array_iters++;
+      p_type = jhook_demangler_get_type(*(p++));
+    }
+    if(p_type == JAVA_OBJECT){
+      size_t b_s = strlen(b);
+      while(*p != ';'){
+        if(*p == '/') b[b_s] = '.';
+        else          b[b_s] = *p;
+        p++; b_s++;
+      }
+      p++; /* skip ';' */
+    }
+    else
+      strcat(b, datatypes[p_type]);
+
+    while(p_array_iters != 0){
+      strcat(b, "[]");
+      p_array_iters--;
+    }
+
+    strcat(b, " ");
+    b[strlen(b)] = c_p_name;
+    c_p_name++;
+    p_type = jhook_demangler_get_type(*(p++));
+    if(p_type != JAVA_UNKNOWN) strcat(b, ", ");
+  }
+
+end:
+  strcat(b, ");");
+  return b;
+}
+
+JHOOK bool jhook_tempfile_generate_java_code(jvmtiEnv *jvmti, hook_t *hooks, size_t size){
+  asm("int3");
+#define SAFE_WRITE(fd, buf, n) do {                           \
+  if(write(fd, buf, n) == -1){                                \
+    jhook_logger_fatal(__func__, "failed to write " #buf);    \
+    goto end;                                                 \
+  }                                                           \
+} while(0)
+  bool status = false;
+  char  b1[]  = "public class ";
+  char  b2[]  = " {\n";
+  char  b3[]  = "}\n";
+
+  /* sizeof - 1: we don't need null bytes in the source code 
+   * because java compiler will complain bout dat 
+   */ 
+  SAFE_WRITE(g_tempfile_fd, b1, sizeof(b1) - 1);
+  SAFE_WRITE(g_tempfile_fd, g_tempfile_class_name, strlen(g_tempfile_class_name));
+  SAFE_WRITE(g_tempfile_fd, b2, sizeof(b2) - 1);
 
   /* append to the source code */
-  sprintf(source_code, "public class %s {\n", g_tempfile_class_name);
   for(size_t i = 0; i < size; i++){
-    jhook_logger_log(__func__, "generating method for %s", hooks[i].method_name);
-    strcat(source_code, hooks[i].method_java_name);
-    strcat(source_code, "\n");
-  }
-  strcat(source_code, "}\n");
+    java_descriptor_t d = { 0 };
+    char *demangled_name;
+    if(strstr(hooks[i].method_sig, "()") != NULL){
+      /* no arguments */
+      *d.p = 0;
+      sscanf(hooks[i].method_sig, "()%s", d.r);
+    }
+    else
+      sscanf(hooks[i].method_sig, "(%[^()])%s", d.p, d.r);
 
-  /* now write it to the file */
-  if(write(g_tempfile_fd, source_code, strlen(source_code)) == -1){
-    jhook_logger_fatal(__func__, "failed to write to the temp file");
-    goto end;
-  } 
+    jhook_logger_log(__func__, "generating method for %s", hooks[i].method_name);
+    demangled_name = jhook_demangler_demangle(d.p, d.r, hooks[i].method_name, hooks[i].method_is_static);
+    if(demangled_name == NULL){
+      jhook_logger_fatal(__func__, "failed to demangle %s", hooks[i].method_sig);
+      goto end;
+    }
+    SAFE_WRITE(g_tempfile_fd, demangled_name, strlen(demangled_name));
+    SAFE_WRITE(g_tempfile_fd, "\n", sizeof("\n") - 1);
+    free(demangled_name);
+  }
+  SAFE_WRITE(g_tempfile_fd, b3, sizeof(b3) - 1);
+
   status = true;
 end:
-  free(source_code);
   return status;
 }
 
