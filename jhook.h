@@ -181,8 +181,8 @@ typedef struct {
   _SET_HOOK(x);                     \
 } while(0)
 
-#define GET_HOOK_NAME_BY_IDX(x)  (hook_info_##x.target_mid)
-#define GET_CLASS_NAME_BY_IDX(x) (hook_info_##x.clazz)
+#define GET_ORIG_METHOD(x)  (hook_info_##x.target_mid)
+#define GET_ORIG_CLASS (x)  (hook_info_##x.clazz)
 
 #define SAFE_RETURN(x, type, code) do{                             \
   code                                                             \

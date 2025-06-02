@@ -33,7 +33,7 @@ JNIEXPORT jstring JNICALL readLine_hk(JNIEnv* env, jobject this) {
 
     // call the original and save its result
     CALL_ORIGINAL(readLine, {
-      r = (*env)->CallObjectMethod(env, this, GET_HOOK_NAME_BY_IDX(readLine));
+      r = (*env)->CallObjectMethod(env, this, GET_ORIG_METHOD(readLine));
     });
 
     if(r == NULL) return r;
