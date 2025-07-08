@@ -79,3 +79,7 @@ If you want to unset it:
 ```c
 REMOVE_HOOK(readLine);
 ```
+## TODO
+- [x]  Linux support
+- [ ]  Windows support
+
