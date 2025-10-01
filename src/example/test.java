@@ -3,7 +3,7 @@ public class test {
         while (true) {
             System.out.println("Hello");
             try {
-                Thread.sleep(1000); // wait for 1000 milliseconds (1 second)
+                Thread.sleep(1000); 
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
