@@ -12,7 +12,7 @@
  * +----------------------------------------------------------------------+
  */
 #include <pthread.h>
-#include "jhook.h"
+#include <jhook.h>
 
 void      *__main_thread(void *a);
 pthread_t g_thread;
@@ -34,14 +34,14 @@ __attribute__((constructor)) void __library_startup(){
   pthread_create(&g_thread, NULL, __main_thread, NULL);
 }
 
-HOOK_INIT(readLine);
-HOOK_ENTRY(readLine);
+HOOK_INIT(readLine)
+HOOK_ENTRY(readLine)
 JNIEXPORT jstring JNICALL readLine_hk(JNIEnv* env, jobject this) {
     jobject r;
     const char *r_s;
 
     CALL_ORIGINAL(readLine, {
-      r = (*env)->CallObjectMethod(env, this, GET_HOOK_NAME_BY_IDX(readLine));
+      r = (*env)->CallObjectMethod(env, this, GET_ORIG_METHOD(readLine));
     });
 
     if(r == NULL) return r;
@@ -51,33 +51,31 @@ JNIEXPORT jstring JNICALL readLine_hk(JNIEnv* env, jobject this) {
     return r;
 }
 
-HOOK_INIT(println);
-HOOK_ENTRY(println);
+HOOK_INIT(println)
+HOOK_ENTRY(println)
 JNIEXPORT void JNICALL println_hk(JNIEnv *env, jobject this, jstring string){
   const char *r_s = (*env)->GetStringUTFChars(env, string, 0);
   jhook_logger_log(__func__,"println: %s", r_s);
 
   CALL_ORIGINAL(println, {
-    (*env)->CallVoidMethod(env, this, GET_HOOK_NAME_BY_IDX(println), string);
+    (*env)->CallVoidMethod(env, this, GET_ORIG_METHOD(println), string);
   });
 }
 
 /* our main loop */
-void* __main_thread(void *a)
+void* __main_thread(void *a __attribute__((unused)))
 {
-  // TODO 
-  // replace asserts with custom made assert that will uninject 
-  // the library on failure. It is really crutial to keep the java process alive 
-  // instead of just exiting it.
+
+  JavaVM *vm;
+  JNIEnv *env;
+  jvmtiEnv *jvmti;
 
   /* this is where we specify functions to hook */
-
   hook_t hooks[] = {
     {
       "java/io/BufferedReader", 
       "readLine", 
       "()Ljava/lang/String;", 
-      "public native java.lang.String readLine();",
       false,
       NULL,
       NULL,
@@ -89,7 +87,6 @@ void* __main_thread(void *a)
       "java/io/PrintWriter", 
       "println", 
       "(Ljava/lang/String;)V", 
-      "public native void println(java.lang.String x);",
       false,
       NULL,
       NULL,
@@ -99,18 +96,18 @@ void* __main_thread(void *a)
     }
   };
 
-  if(!jhook_init(JVMTI_VERSION_1_2)){
+  if(!jhook_init(JVMTI_VERSION_1_2, &vm, &env, &jvmti)){
     jhook_logger_fatal(__func__, "failed to initialize jhook");
     return NULL;
   }
 
-  if(!jhook_register(hooks, ARR_LENGTH(hooks))){
+  if(!jhook_register(hooks, ARR_LENGTH(hooks), env, jvmti)){
     jhook_logger_fatal(__func__, "failed to register hooks");
     return NULL;
   }
 
-  SET_HOOK(readLine, hooks[0].method_id_orig, hooks[0].method_id_hook);
-  SET_HOOK(println, hooks[1].method_id_orig, hooks[1].method_id_hook);
+  SET_HOOK(readLine, hooks[0]);
+  SET_HOOK(println,  hooks[1]);
   return NULL;
 }
 
