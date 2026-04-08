@@ -15,7 +15,7 @@ It is also important to jump to the native interpreter entry afterward, because 
 This library actually uses the second option by generating Java code and compiling it using JNI. We then load the class and register all methods so that they point to our native code.
 
 ## prerequisites
-- installed java-sdk (we are dependant on javax)
+- installed java-sdk (we are dependent on javax)
 - сmake 
 - ruby
 - gcc/clang
