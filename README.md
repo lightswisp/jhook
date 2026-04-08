@@ -16,9 +16,16 @@ This library actually uses the second option by generating Java code and compili
 
 ## prerequisites
 - installed java-sdk (we are dependant on javax)
-- make 
+- сmake 
 - ruby
 - gcc/clang
+
+## how to build?
+```bash
+mkdir build && cd build
+cmake ..
+make
+```
 
 ## how to use?
 
